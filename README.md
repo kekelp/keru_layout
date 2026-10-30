@@ -1,10 +1,8 @@
 # `keru_layout`
 
->This file is written by a human.
+`keru_layout` is a UI layout library that uses a new graph-based algorithm. It's used in the [Keru GUI library](https://github.com/kekelp/keru/), but it's available here as a self-contained crate.
 
-`keru_layout` is a UI layout library that uses a new graph-based algorithm. It's used in the [Keru GUI library](https://github.com/kekelp/keru/), but it's available as a self-contained reusable crate.
-
-# The Idea
+## The Idea
 
 Most layout algorithms will do one or more traversals of the tree of UI elements and calculate the size and position of each elements as they go.
 
@@ -12,12 +10,12 @@ However, the kind of dependencies that layout libraries usually expose can go al
 
 In short, the idea of this library is to consider the resulting graph of dependencies and to solve it directly. The algorithm traverses the abstract dependency graph rather than the real UI tree.
 
-# Advantages
+## Advantages
 
 - Performance: this library is very fast. From the testing that I've done so far, most layouts can fall in either of two categories:
 
     - Layouts where the graph of dependencies ends up being fairly similar to the real UI tree. For example, a layout composed completely of nested `Frac(0.5)` elements.
-    In these cases, `keru_layout` is on par with well-optimized implementations of the traditional tree-based libraries.
+    In these cases, `keru_layout` is on par with well-optimized implementations of the traditional tree-based algorithms.
 
     - Layouts where the graph of dependencies ends up being very different from the UI tree. For example, a layout with many `FitContent` or `AspectRatio` nodes.
     In these cases, `keru_layout` is significantly faster.
@@ -31,7 +29,7 @@ In short, the idea of this library is to consider the resulting graph of depende
 - Debuggability: almost all layout systems can express cyclic dependencies between elements, but in a traditional tree-based algorithm, this will result in a silently "broken" or inconsistent layout. With a graph algorithm we can give the user a clear warning and an accurate list of the nodes that were stuck in cycles.
 
 
-# Usage
+## Usage
 
 `keru_layout` has a trait-based API similar to Taffy's low-level API.
 There's also an alternative API similar to Taffy's high-level API where the library provides a ready-to-use `LayoutTree`, but it's only meant for quick experiments, examples and testing.
@@ -65,7 +63,7 @@ The trait-based API assumes that you already have a tree of UI elements, and tha
 
 Then, you can call the trait's `solve_layout()` method to calculate the layout and write all the output sizes.
 
-## `LayoutTree` API
+### `LayoutTree` API
 
 Create a `LayoutTree`, then insert nodes into the layout tree to match the structure of your UI tree, run `tree.compute_layout()`, then use `tree.layout()` on each node to extract the results and use them to update the corresponding UI node.
 
@@ -84,7 +82,18 @@ let rect = tree.layout(item);
 std::fs::write("example.svg", tree.to_svg()).unwrap();
 ```
 
-# FAQ
+## Incremental Relayout
+
+The dependency graph approach is also quite useful for incremental relayout. This library supports incremental relayout for non-structural changes to cycle-free layouts. See the documentation of the `solve_layout_incremental()` method in the `TreeAdapter` trait.
+
+Supporting structural changes wouldn't be impossible, but it would bring a lot of extra complexity. For example, a structural change can cause a cycle to form in a previously cycle-free tree.
+
+Because the algorithm is quite fast, doing a full relayout instead of an incremental one is unlikely to be the reason why a program misses a frame. That means that incremental relayout only helps with power usage and heat. That means that it makes sense to focus on the kinds of relayouts that can happen at 60/120+ Hz like elements being dragged and resized, and those are typically not structural.
+
+If you don't use incremental relayout at all, you can turn off the `incremental` feature to leave out all traces of it and improve the size and cache efficiency of the layout data. This can make the full solve 2-3% faster.
+
+
+## FAQ
 
 - **Is this the same as the Cassowary constraint solving algorithm?**
 
