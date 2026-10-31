@@ -317,11 +317,10 @@ impl<T, M: FnMut(NodeId, Option<&mut T>, Option<f32>) -> Xy<f32>> TreeAdapter fo
 }
 
 impl<T> LayoutTree<T> {
-    /// Draws the layout from the last `compute_layout()` as an SVG image.
-    pub fn to_svg(&self) -> String {
+    fn to_svg_inner(&self, text: impl Fn(&T) -> &str) -> String {
         use std::fmt::Write;
         let window = self.nodes[self.root].rect;
-        let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" font-family=\"monospace\" font-size=\"5\">\n", window.x[1], window.y[1]);
+        let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" font-family=\"monospace\" font-size=\"7.5\">\n", window.x[1], window.y[1]);
         let _ = writeln!(svg, "<rect width=\"100%\" height=\"100%\" fill=\"#faf8f5\"/>");
         let mut stack = vec![self.root];
         while let Some(i) = stack.pop() {
@@ -332,15 +331,67 @@ impl<T> LayoutTree<T> {
             let color = node_color(i);
             let rect = node.rect;
             let size = node.params.size;
-            let id = format!("{i:?}");
-            let id = format!("[{}]", id.trim_start_matches("NodeId(").trim_end_matches(')'));
+
             let _ = writeln!(svg, "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{color}\" fill-opacity=\"0.06\" stroke=\"{color}\"/>", rect.x[0], rect.y[0], rect.x[1] - rect.x[0], rect.y[1] - rect.y[0]);
-            let _ = writeln!(svg, "<text x=\"{}\" y=\"{}\" fill=\"{color}\">{id} {} × {}</text>", rect.x[0] + 1.5, rect.y[0] + 6.0, size_label(size.x), size_label(size.y));
+            if let (Some(context), true) = (&node.context, node.params.text != TextContent::None) {
+                let [left, right] = node.params.padding.x;
+                let wraps = node.params.text == TextContent::Box && ! matches!(node.params.size.x, Size::AspectRatio(_));
+                let wrap_width = wraps.then(|| (node.layout.size().x - left - right).max(0.0));
+                for (n, line) in lines(text(context), wrap_width).iter().enumerate() {
+                    let y = rect.y[0] + node.params.padding.y[0] + (n as f32 + 0.75) * LINE_HEIGHT;
+                    let length = line.chars().count() as f32 * CHAR_WIDTH;
+                    let line = line.replace('&', "&amp;").replace('<', "&lt;");
+                    let _ = writeln!(svg, "<text x=\"{}\" y=\"{y}\" font-size=\"{FONT_SIZE}\" textLength=\"{length}\" lengthAdjust=\"spacingAndGlyphs\" fill=\"#222\">{line}</text>", rect.x[0] + left);
+                }
+            }
+            let _ = writeln!(svg, "<text x=\"{}\" y=\"{}\" fill=\"{color}\">{} × {}</text>", rect.x[0] + 2.25, rect.y[0] + 9.0, size_label(size.x), size_label(size.y));
             stack.extend(self.children(i));
         }
         svg.push_str("</svg>\n");
         svg
     }
+}
+
+impl<T> LayoutTree<T> {
+    /// Draws an SVG image representing the layout rectangles from the last `compute_layout()`.
+    pub fn to_svg(&self) -> String {
+        self.to_svg_inner(|_| "")
+    }
+}
+
+impl<T: AsRef<str>> LayoutTree<T> {
+    /// Draws an SVG image representing the layout from the last `compute_layout()`.
+    /// 
+    /// The text will only have the correct dimensions if [`measure_monospace_text()`] is used as the measurement function. 
+    pub fn to_svg_with_text(&self) -> String  {
+        self.to_svg_inner(|text| text.as_ref())
+    }
+}
+
+const FONT_SIZE: f32 = 12.0;
+const CHAR_WIDTH: f32 = 0.6 * FONT_SIZE;
+const LINE_HEIGHT: f32 = 1.2 * FONT_SIZE;
+
+/// A measure function for `solve_layout_with_measure` that matches the text of `LayoutTree::to_svg`.
+pub fn measure_monospace_text<T: AsRef<str>>(_: NodeId, text: Option<&mut T>, wrap_width: Option<f32>) -> Xy<f32> {
+    let lines = lines(text.as_deref().map_or("", T::as_ref), wrap_width);
+    let longest = lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
+    Xy::new(longest as f32 * CHAR_WIDTH, lines.len() as f32 * LINE_HEIGHT)
+}
+
+fn lines(text: &str, wrap_width: Option<f32>) -> Vec<String> {
+    let max_chars = wrap_width.map_or(usize::MAX, |width| (width / CHAR_WIDTH) as usize);
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        match lines.last_mut() {
+            Some(line) if line.chars().count() + 1 + word.chars().count() <= max_chars => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_string()),
+        }
+    }
+    lines
 }
 
 fn node_color(i: NodeId) -> String {

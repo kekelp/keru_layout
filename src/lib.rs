@@ -19,7 +19,7 @@ pub(crate) use place::Place;
 #[cfg(feature = "incremental")]
 pub use incremental::{IncrementalRelayoutOutcome, LayoutData};
 #[cfg(feature = "incremental")]
-pub use layout_tree::{LayoutTree, NodeId};
+pub use layout_tree::{LayoutTree, NodeId, measure_monospace_text};
 
 pub trait TreeAdapter {
     type NodeId: Copy + Eq + Debug;

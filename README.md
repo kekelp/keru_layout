@@ -1,6 +1,6 @@
 # `keru_layout`
 
-`keru_layout` is a UI layout library that uses a new graph-based algorithm. It's used in the [Keru GUI library](https://github.com/kekelp/keru/), but it's available here as a self-contained crate.
+`keru_layout` is a UI layout library that uses a new algorithm. It's used in the [Keru GUI library](https://github.com/kekelp/keru/), but it's available here as a self-contained crate.
 
 ## The Idea
 
@@ -12,7 +12,7 @@ In short, the idea of this library is to consider the resulting graph of depende
 
 ## Advantages
 
-- Performance: this library is very fast. From the testing that I've done so far, most layouts can fall in either of two categories:
+- Performance: this library is very fast. Most layouts fall in either of two categories:
 
     - Layouts where the graph of dependencies ends up being fairly similar to the real UI tree. For example, a layout composed completely of nested `Frac(0.5)` elements.
     In these cases, `keru_layout` is on par with well-optimized implementations of the traditional tree-based algorithms.
@@ -82,15 +82,17 @@ let rect = tree.layout(item);
 std::fs::write("example.svg", tree.to_svg()).unwrap();
 ```
 
+![Layout example](examples/example.svg "Svg output for the layout in `example.rs`")
+
 ## Incremental Relayout
 
 The dependency graph approach is also quite useful for incremental relayout. This library supports incremental relayout for non-structural changes to cycle-free layouts. See the documentation of the `solve_layout_incremental()` method in the `TreeAdapter` trait.
 
 Supporting structural changes wouldn't be impossible, but it would bring a lot of extra complexity. For example, a structural change can cause a cycle to form in a previously cycle-free tree.
 
-Because the algorithm is quite fast, doing a full relayout instead of an incremental one is unlikely to be the reason why a program misses a frame. That means that incremental relayout only helps with power usage and heat. That means that it makes sense to focus on the kinds of relayouts that can happen at 60/120+ Hz like elements being dragged and resized, and those are typically not structural.
+Because the algorithm is quite fast, doing a full relayout instead of an incremental one is unlikely to be the reason why a program misses a frame. That means that incremental relayout only really helps with power usage and heat. So, that it makes sense to focus on the kinds of relayouts that can happen at 60/120+ Hz, like elements being dragged or resized, and those are typically not structural.
 
-If you don't use incremental relayout at all, you can turn off the `incremental` feature to leave out all traces of it and improve the size and cache efficiency of the layout data. This can make the full solve 2-3% faster.
+If you don't want to use incremental relayout at all, you can turn off the `incremental` feature to take out all traces of it and improve the size and cache efficiency of the layout data. This can make the full solve about 1-5% faster.
 
 
 ## FAQ
