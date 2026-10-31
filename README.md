@@ -82,8 +82,6 @@ let rect = tree.layout(item);
 std::fs::write("example.svg", tree.to_svg()).unwrap();
 ```
 
-![Layout example](examples/example.svg "Svg output for the layout in `example.rs`")
-
 ## Incremental Relayout
 
 The dependency graph approach is also quite useful for incremental relayout. This library supports incremental relayout for non-structural changes to cycle-free layouts. See the documentation of the `solve_layout_incremental()` method in the `TreeAdapter` trait.
@@ -100,3 +98,7 @@ If you don't want to use incremental relayout at all, you can turn off the `incr
 - **Is this the same as the Cassowary constraint solving algorithm?**
 
     No, it's different. This algorithm doesn't model all dependencies as constraints, doesn't use the simplex method, or anything like that.
+
+## SVG output of the `example.rs` example
+
+![Layout example](examples/example.svg "Svg output for the layout in `example.rs`")
