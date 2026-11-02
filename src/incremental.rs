@@ -99,8 +99,8 @@ fn is_structural(old: &LayoutParams, new: &LayoutParams) -> bool {
         (ChildrenLayout::Free, ChildrenLayout::Free) => true,
         (ChildrenLayout::Stack { axis: a, .. }, ChildrenLayout::Stack { axis: b, .. }) => a == b,
         // The `Count` grid cells are assigned in `prepare`.
-        (ChildrenLayout::Grid { columns: MainAxisCellSize::Count(a), flow: flow_a, .. }, ChildrenLayout::Grid { columns: MainAxisCellSize::Count(b), flow: flow_b, .. }) => a == b && flow_a == flow_b,
-        (ChildrenLayout::Grid { columns: MainAxisCellSize::Width(_), flow: flow_a, .. }, ChildrenLayout::Grid { columns: MainAxisCellSize::Width(_), flow: flow_b, .. }) => flow_a == flow_b,
+        (ChildrenLayout::Grid { columns: MainAxisCellSize::Count(a), main_axis: main_a, backfill: backfill_a, .. }, ChildrenLayout::Grid { columns: MainAxisCellSize::Count(b), main_axis: main_b, backfill: backfill_b, .. }) => a == b && main_a == main_b && backfill_a == backfill_b,
+        (ChildrenLayout::Grid { columns: MainAxisCellSize::Width(_), main_axis: main_a, backfill: backfill_a, .. }, ChildrenLayout::Grid { columns: MainAxisCellSize::Width(_), main_axis: main_b, backfill: backfill_b, .. }) => main_a == main_b && backfill_a == backfill_b,
         _ => false,
     };
     old.disabled != new.disabled

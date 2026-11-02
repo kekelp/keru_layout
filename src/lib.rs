@@ -254,16 +254,6 @@ pub enum Arrange {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GridFlow {
-    pub main_axis: Axis,
-    pub backfill: bool,
-}
-
-impl GridFlow {
-    pub const DEFAULT: Self = Self { main_axis: Axis::X, backfill: false };
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MainAxisCellSize {
     Count(u32),
     Width(f32),
@@ -281,7 +271,8 @@ pub enum ChildrenLayout {
         columns: MainAxisCellSize,
         spacing_x: f32,
         spacing_y: f32,
-        flow: GridFlow,
+        main_axis: Axis,
+        backfill: bool,
     },
 }
 

@@ -263,15 +263,15 @@ pub(crate) trait Solve: TreeAdapter {
         data.n_placed_children = n_placed_children;
         data.flags.0 |= child_flags;
 
-        if let ChildrenLayout::Grid { columns: MainAxisCellSize::Count(n), flow, .. } = self.node_layout_params(i).children_layout {
-            self.assign_grid_cells(i, (n as usize).max(1), flow);
+        if let ChildrenLayout::Grid { columns: MainAxisCellSize::Count(n), main_axis, backfill, .. } = self.node_layout_params(i).children_layout {
+            self.assign_grid_cells(i, (n as usize).max(1), main_axis, backfill);
         }
     }
 
     #[inline(always)]
     fn width_grid_main_axis(&self, i: Self::NodeId) -> Option<Axis> {
         match self.node_layout_params(i).children_layout {
-            ChildrenLayout::Grid { columns: MainAxisCellSize::Width(_), flow, .. } => Some(flow.main_axis),
+            ChildrenLayout::Grid { columns: MainAxisCellSize::Width(_), main_axis, .. } => Some(main_axis),
             _ => None,
         }
     }
@@ -537,10 +537,10 @@ pub(crate) trait Solve: TreeAdapter {
 
     fn solve_fitcontent(&mut self, i: Self::NodeId, axis: Axis) -> f32 {
         let (children, gaps) = match self.node_layout_params(i).children_layout {
-            ChildrenLayout::Grid { columns, spacing_x, spacing_y, flow } => {
+            ChildrenLayout::Grid { columns, spacing_x, spacing_y, main_axis, .. } => {
                 let spacing = Xy::new(spacing_x, spacing_y)[axis];
                 let (n, cell) = match columns {
-                    MainAxisCellSize::Width(w) if axis == flow.main_axis => (1.0, w),
+                    MainAxisCellSize::Width(w) if axis == main_axis => (1.0, w),
                     _ => {
                         let n = self.node_layout_data(i).grid_lines[axis] as f32;
                         let mut cell = 0.0f32;
@@ -752,38 +752,37 @@ pub(crate) trait Solve: TreeAdapter {
 
     /// Assigns the cells of a grid with `MainAxisCellSize::Width` columns, from its `Final` size on the main axis.
     fn assign_width_grid_cells(&mut self, i: Self::NodeId) {
-        let ChildrenLayout::Grid { columns: MainAxisCellSize::Width(w), spacing_x, spacing_y, flow } = self.node_layout_params(i).children_layout else {
+        let ChildrenLayout::Grid { columns: MainAxisCellSize::Width(w), spacing_x, spacing_y, main_axis: main, backfill } = self.node_layout_params(i).children_layout else {
             unreachable!();
         };
-        let main = flow.main_axis;
         let spacing = Xy::new(spacing_x, spacing_y)[main];
         let inner_main = inner(self.get_solved_value(i, main, Kind::Final), self.total_padding(i, main));
         let n_main = ((inner_main + spacing) / (w + spacing)).floor().max(1.0) as usize;
-        self.assign_grid_cells(i, n_main, flow);
+        self.assign_grid_cells(i, n_main, main, backfill);
     }
 
-    fn assign_grid_cells(&mut self, i: Self::NodeId, n_main: usize, flow: GridFlow) {
+    fn assign_grid_cells(&mut self, i: Self::NodeId, n_main: usize, main_axis: Axis, backfill: bool) {
         let has_spans = self.node_layout_data(i).flags.0 & NodeFlags::GRID_SPANS != 0;
         let n_lines = if ! has_spans {
-            self.assign_grid_cells_in_order(i, n_main, flow)
+            self.assign_grid_cells_in_order(i, n_main, main_axis)
         } else {
-            self.assign_grid_cells_with_spans(i, n_main, flow)
+            self.assign_grid_cells_with_spans(i, n_main, main_axis, backfill)
         };
 
         let mut lines = Xy::new(0, 0);
-        lines[flow.main_axis] = n_main as u16;
-        lines[flow.main_axis.other()] = n_lines as u16;
+        lines[main_axis] = n_main as u16;
+        lines[main_axis.other()] = n_lines as u16;
         self.node_layout_data_mut(i).grid_lines = lines;
     }
 
     /// Without spans, the children go into predictable positions and `backfill` has no effect, because there are no holes.
-    fn assign_grid_cells_in_order(&mut self, i: Self::NodeId, n_main: usize, flow: GridFlow) -> usize {
+    fn assign_grid_cells_in_order(&mut self, i: Self::NodeId, n_main: usize, main_axis: Axis) -> usize {
         let mut k = 0;
         for_each_layout_child!(self, i, child, {
             if ! self.node_layout_params(child).free_placement {
                 let mut cell = Xy::new(0, 0);
-                cell[flow.main_axis] = (k % n_main) as u16;
-                cell[flow.main_axis.other()] = (k / n_main) as u16;
+                cell[main_axis] = (k % n_main) as u16;
+                cell[main_axis.other()] = (k / n_main) as u16;
                 self.node_layout_data_mut(child).grid_cell = cell;
                 k += 1;
             }
@@ -791,7 +790,7 @@ pub(crate) trait Solve: TreeAdapter {
         k.div_ceil(n_main)
     }
 
-    fn assign_grid_cells_with_spans(&mut self, i: Self::NodeId, n_main: usize, flow: GridFlow) -> usize {
+    fn assign_grid_cells_with_spans(&mut self, i: Self::NodeId, n_main: usize, main_axis: Axis, backfill: bool) -> usize {
         with_arena(|arena| {
             let mut occupied = BumpVec::new_in(arena);
             let mut cursor_line = 0;
@@ -799,10 +798,10 @@ pub(crate) trait Solve: TreeAdapter {
             for_each_layout_child!(self, i, child, {
                 if ! self.node_layout_params(child).free_placement {
                     let span = self.node_layout_params(child).grid_span;
-                    let span_pos = (span[flow.main_axis].max(1) as usize).min(n_main);
-                    let span_line = span[flow.main_axis.other()].max(1) as usize;
+                    let span_pos = (span[main_axis].max(1) as usize).min(n_main);
+                    let span_line = span[main_axis.other()].max(1) as usize;
 
-                    let mut line = if flow.backfill { 0 } else { cursor_line };
+                    let mut line = if backfill { 0 } else { cursor_line };
                     let pos = 'search: loop {
                         for pos in 0..=n_main - span_pos {
                             if grid_area_is_free(&occupied, n_main, line, pos, span_line, span_pos) {
@@ -819,13 +818,13 @@ pub(crate) trait Solve: TreeAdapter {
                     for l in line..line + span_line {
                         occupied[l * n_main + pos..l * n_main + pos + span_pos].fill(true);
                     }
-                    if ! flow.backfill {
+                    if ! backfill {
                         cursor_line = line;
                     }
 
                     let mut cell = Xy::new(0, 0);
-                    cell[flow.main_axis] = pos as u16;
-                    cell[flow.main_axis.other()] = line as u16;
+                    cell[main_axis] = pos as u16;
+                    cell[main_axis.other()] = line as u16;
                     self.node_layout_data_mut(child).grid_cell = cell;
                 }
             });

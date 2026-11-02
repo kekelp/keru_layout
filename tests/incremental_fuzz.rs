@@ -74,10 +74,6 @@ fn random_window_overflow(rng: &mut StdRng) -> WindowOverflow {
     [WindowOverflow::Ignore, WindowOverflow::Clamp, WindowOverflow::Flip][rng.random_range(0..3)]
 }
 
-fn random_grid_flow(rng: &mut StdRng) -> GridFlow {
-    GridFlow { main_axis: random_axis(rng), backfill: rng.random_bool(0.3) }
-}
-
 /// A size of the same kind with a new number, or `None` if the kind has no number.
 fn renumber(size: Size, rng: &mut StdRng) -> Option<Size> {
     match size {
@@ -93,8 +89,8 @@ fn random_children_layout(rng: &mut StdRng) -> ChildrenLayout {
     match rng.random_range(0..10) {
         0..3 => ChildrenLayout::Free,
         3..8 => ChildrenLayout::Stack { arrange: random_arrange(rng), axis, spacing: rng.random_range(0.0..10.0f32).round() },
-        8 => ChildrenLayout::Grid { columns: MainAxisCellSize::Count(rng.random_range(1..5)), spacing_x: 4.0, spacing_y: 4.0, flow: random_grid_flow(rng) },
-        _ => ChildrenLayout::Grid { columns: MainAxisCellSize::Width(rng.random_range(20.0..60.0f32).round()), spacing_x: 4.0, spacing_y: 4.0, flow: random_grid_flow(rng) },
+        8 => ChildrenLayout::Grid { columns: MainAxisCellSize::Count(rng.random_range(1..5)), spacing_x: 4.0, spacing_y: 4.0, main_axis: axis, backfill: rng.random_bool(0.3) },
+        _ => ChildrenLayout::Grid { columns: MainAxisCellSize::Width(rng.random_range(20.0..60.0f32).round()), spacing_x: 4.0, spacing_y: 4.0, main_axis: axis, backfill: rng.random_bool(0.3) },
     }
 }
 
