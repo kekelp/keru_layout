@@ -7,7 +7,7 @@ new_key_type! {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Node<T> {
+pub(crate) struct LayoutNode<T> {
     pub(crate) parent: Option<NodeId>,
     pub(crate) first_child: Option<NodeId>,
     pub(crate) last_child: Option<NodeId>,
@@ -28,7 +28,7 @@ pub(crate) struct Node<T> {
 /// The functions panic if they receive the id of a removed node.
 #[derive(Debug, Clone)]
 pub struct LayoutTree<T = ()> {
-    pub(crate) nodes: SlotMap<NodeId, Node<T>>,
+    pub(crate) nodes: SlotMap<NodeId, LayoutNode<T>>,
     root: NodeId,
     pub(crate) layout_data: LayoutData<NodeId>,
     warnings: Vec<LayoutWarning<NodeId>>,
@@ -50,10 +50,11 @@ impl<T> LayoutTree<T> {
     /// Makes a tree that contains only the root, with space for `capacity` nodes.
     pub fn with_capacity(capacity: usize) -> Self {
         let mut nodes = SlotMap::with_capacity_and_key(capacity);
-        let root = nodes.insert(Node::new(LayoutParams::DEFAULT));
+        let root = nodes.insert(LayoutNode::new(LayoutParams::DEFAULT));
         LayoutTree { nodes, root, layout_data: LayoutData::new(), warnings: Vec::new(), window_size: Xy::new(0.0, 0.0) }
     }
 
+    /// Get the `NodeId` corresponding to the root node.
     pub fn root(&self) -> NodeId {
         self.root
     }
@@ -117,6 +118,7 @@ impl<T> LayoutTree<T> {
         self.layout_data.request_full_solve(IncrementalRelayoutOutcome::FallbackStructuralChange);
     }
 
+    /// Read the node's `LayoutParams`.
     pub fn params(&self, i: NodeId) -> &LayoutParams {
         &self.nodes[i].params
     }
@@ -142,6 +144,7 @@ impl<T> LayoutTree<T> {
         self.nodes[i].parent
     }
 
+    /// Get an iterator over the node's children.
     pub fn children(&self, i: NodeId) -> impl Iterator<Item = NodeId> + '_ {
         std::iter::successors(self.nodes[i].first_child, |&child| self.nodes[child].next_sibling)
     }
@@ -156,6 +159,7 @@ impl<T> LayoutTree<T> {
         &self.warnings
     }
 
+    /// Read the window size.
     pub fn window_size(&self) -> Xy<f32> {
         self.window_size
     }
@@ -177,7 +181,7 @@ impl<T> LayoutTree<T> {
     }
 
     fn add_node_inner(&mut self, parent: NodeId, params: LayoutParams, context: Option<T>) -> NodeId {
-        let mut node = Node::new(params);
+        let mut node = LayoutNode::new(params);
         node.context = context;
         let i = self.nodes.insert(node);
         let last = self.nodes[parent].last_child;
@@ -228,16 +232,16 @@ impl<T> LayoutTree<T> {
     }
 }
 
-impl<T> Node<T> {
+impl<T> LayoutNode<T> {
     fn new(params: LayoutParams) -> Self {
-        Node {
+        LayoutNode {
             parent: None,
             first_child: None,
             last_child: None,
             prev_sibling: None,
             next_sibling: None,
             params,
-            layout: NodeLayoutData::EMPTY,
+            layout: NodeLayoutData::new(),
             rect: Xy::new([0.0, 0.0], [0.0, 0.0]),
             context: None,
         }
@@ -335,7 +339,7 @@ impl<T> LayoutTree<T> {
             let _ = writeln!(svg, "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{color}\" fill-opacity=\"0.06\" stroke=\"{color}\"/>", rect.x[0], rect.y[0], rect.x[1] - rect.x[0], rect.y[1] - rect.y[0]);
             if let (Some(context), true) = (&node.context, node.params.text != TextContent::None) {
                 let [left, right] = node.params.padding.x;
-                let wraps = node.params.text == TextContent::Box && ! matches!(node.params.size.x, Size::AspectRatio(_));
+                let wraps = node.params.text == TextContent::Wrapping && ! matches!(node.params.size.x, Size::AspectRatio(_));
                 let wrap_width = wraps.then(|| (node.layout.size().x - left - right).max(0.0));
                 for (n, line) in lines(text(context), wrap_width).iter().enumerate() {
                     let y = rect.y[0] + node.params.padding.y[0] + (n as f32 + 0.75) * LINE_HEIGHT;

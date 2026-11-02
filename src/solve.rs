@@ -26,8 +26,8 @@ pub(crate) const fn slot_index(axis: Axis, kind: Kind) -> usize {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Slot<N> {
-    pub node: N,
+pub(crate) struct Slot<I> {
+    pub node: I,
     pub axis: Axis,
     pub kind: Kind,
 }
@@ -134,15 +134,18 @@ pub struct NodeLayoutData {
 }
 
 impl NodeLayoutData {
-    pub const EMPTY: NodeLayoutData = NodeLayoutData {
-        values: EMPTY_VALUES,
-        flags: NodeFlags::EMPTY,
-        #[cfg(feature = "incremental")]
-        levels: [0; N_SLOTS],
-        n_placed_children: 0,
-        grid_cell: Xy { x: 0, y: 0 },
-        grid_lines: Xy { x: 0, y: 0 },
-    };
+    /// Creates a new empty [`NodeLayoutData`].
+    pub const fn new() -> Self {
+        NodeLayoutData {
+            values: EMPTY_VALUES,
+            flags: NodeFlags::EMPTY,
+            #[cfg(feature = "incremental")]
+            levels: [0; N_SLOTS],
+            n_placed_children: 0,
+            grid_cell: Xy { x: 0, y: 0 },
+            grid_lines: Xy { x: 0, y: 0 },
+        }
+    }
 
     pub(crate) fn size(&self) -> Xy<f32> {
         let values = &self.values;
@@ -152,7 +155,7 @@ impl NodeLayoutData {
 
 impl Default for NodeLayoutData {
     fn default() -> Self {
-        Self::EMPTY
+        Self::new()
     }
 }
 
@@ -212,7 +215,7 @@ pub(crate) trait Solve: TreeAdapter {
 
     #[inline(always)]
     fn text_wraps(&self, i: Self::NodeId, axis: Axis) -> bool {
-        axis == Y && self.node_layout_params(i).text == TextContent::Box && ! matches!(self.node_layout_params(i).size[X], Size::AspectRatio(_))
+        axis == Y && self.node_layout_params(i).text == TextContent::Wrapping && ! matches!(self.node_layout_params(i).size[X], Size::AspectRatio(_))
     }
 
     #[inline(always)]
@@ -230,7 +233,7 @@ pub(crate) trait Solve: TreeAdapter {
     }
 
     fn prepare(&mut self, i: Self::NodeId) {
-        *self.node_layout_data_mut(i) = NodeLayoutData::EMPTY;
+        *self.node_layout_data_mut(i) = NodeLayoutData::new();
         if self.node_layout_params(i).disabled {
             return;
         }

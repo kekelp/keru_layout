@@ -1,3 +1,7 @@
+#![doc = include_str!("../README.md")]
+
+#![warn(missing_docs)]
+
 #[macro_use]
 mod solve;
 mod place;
@@ -21,14 +25,25 @@ pub use incremental::{IncrementalRelayoutOutcome, LayoutData};
 #[cfg(feature = "incremental")]
 pub use layout_tree::{LayoutTree, NodeId, measure_monospace_text};
 
+/// The adapter trait that allows the layout algorithm to read your UI tree and compute the layout for it.
+/// 
+/// See the top-level crate documentation, or [`LayoutTree`] for an example of a tree that implements the trait.
 pub trait TreeAdapter {
+    /// An id type that can be used to refer to nodes in your UI tree.
     type NodeId: Copy + Eq + Debug;
+    /// The `NodeId` that refers to the root node, which should correspond to the whole window.
     fn root(&self) -> Self::NodeId;
+    /// Get the `NodeId` for a node's parent.
     fn parent(&self, i: Self::NodeId) -> Self::NodeId;
+    /// Get the `NodeId` for a node's first child, or `None` if it has no children.
     fn first_child(&self, i: Self::NodeId) -> Option<Self::NodeId>;
+    /// Get the `NodeId` for a node's next sibling, or `None` if it's the last child of its parent.
     fn next_sibling(&self, i: Self::NodeId) -> Option<Self::NodeId>;
+    /// Read a the [`LayoutParams`] of the node corresponding to `i`.
     fn node_layout_params(&self, i: Self::NodeId) -> &LayoutParams;
+    /// Access the [`NodeLayoutData`] of the node corresponding to `i`.
     fn node_layout_data(&self, i: Self::NodeId) -> &NodeLayoutData;
+    /// Get a mutable reference to the [`NodeLayoutData`] of the node corresponding to `i`.
     fn node_layout_data_mut(&mut self, i: Self::NodeId) -> &mut NodeLayoutData;
     /// The layout data for the whole tree.
     fn layout_data(&mut self) -> &mut LayoutData<Self::NodeId>;
@@ -102,13 +117,17 @@ pub trait TreeAdapter {
     }
 }
 
+/// The X or Y axes.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Axis {
+    /// The X axis.
     X,
+    /// The Y axis.
     Y,
 }
 
 impl Axis {
+    /// The axis orthogonal to `self`: Y if `self` is X and X if `self` is Y.
     pub fn other(&self) -> Self {
         match self {
             Axis::X => Axis::Y,
@@ -119,19 +138,24 @@ impl Axis {
 
 pub(crate) use Axis::{X, Y};
 
+/// A generic container for two-dimensional data.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Xy<T> {
+    /// The X component.
     pub x: T,
+    /// The Y component.
     pub y: T,
 }
 
 impl<T> Xy<T> {
+    /// Create a new `Xy<T>`.
     pub const fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
 }
 
 impl<T: Copy> Xy<T> {
+    /// Create a new `Xy<T>` with the same value on both axes.
     pub const fn new_symm(v: T) -> Self {
         Self { x: v, y: v }
     }
@@ -158,31 +182,65 @@ impl<T> IndexMut<Axis> for Xy<T> {
     }
 }
 
+/// A 2D rectangle, expressed as a start and end coordinates on each axis.
+/// 
+/// Alias of `Xy<[f32; 2]>`.
 pub type XyRect = Xy<[f32; 2]>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// The size of a layout element.
 pub enum Size {
+    /// A fixed size in logical pixels.
     Pixels(f32),
+    /// A fraction of the parent element.
+    /// 
+    /// Collapses to zero if the parent has a size of zero, or if it's `FitContent` and has no other children that can give it a size. 
     Frac(f32),
+    /// Fill all the available space in the parent element.
+    /// 
+    /// Multiple `Fill` children in a stack share the space evenly, or according to their `fill_weight` if it's different from the default of `1.0`.
+    /// 
+    /// Collapses to zero if the parent has a size of zero, or if it's `FitContent` and has no other children that can give it a size. 
     Fill,
+    /// As big as the element's children or the intrinsic content such as text, plus the `padding`.
     FitContent,
+    /// A size that depends on the size of this same element in the other axis, according to an aspect ratio.
     AspectRatio(f32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// The "origin" of a layout element inside its own rectangle.
+/// 
+/// For example, an element with `Size::Pixels(10.0)` and `Pos::Pixels(0.0)` on an axis will be placed at `[0.0, 10.0]`, `[-5.0, 5.0]` or `[-10.0, 0.0]` if its `Anchor` is `Start`, `Center` or `End` respectively.
+/// 
+/// Has no effect in a stack's main axis, or for `Pos` values other than `Pixels` and `Frac`.
 pub enum Anchor {
+    /// The left or top edge of the element's rectangle.
     Start,
+    /// The center of the element's rectangle.
     Center,
+    /// The right or bottom edge of the element's rectangle.
     End,
+    /// Any fraction, with `0.0` corresponding to the left or top edge and `1.0` corresponding to the right or bottom edge.
     Frac(f32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// The position of a layout element in the space of its parent.
+/// 
+/// If the node is a child of a stack, its `Pos` value on the stack's main axis is ignored, as the stack positions the child according to its own logic.
+/// 
+/// In a grid, the `Pos` value controls how the node is placed within the space of a grid cell.
 pub enum Pos {
-    Center,
+    /// The left or top side of the parent.
     Start,
+    /// The center of the parent.
+    Center,
+    /// The right or bottom side of the parent.
     End,
+    /// A fixed number of pixels starting from the left or top side of the parent.
     Pixels(f32),
+    /// A fraction of the parent's size starting from its left or top side.
     Frac(f32),
 }
 
@@ -191,19 +249,47 @@ pub enum Pos {
 #[non_exhaustive]
 pub enum LayoutWarning<Id> {
     /// A node is stuck in a dependency cycle.
-    Cycle { node: Id, axis: Axis },
+    Cycle {
+        /// The id of the node stuck in the cycle.
+        node: Id,
+        /// Which of the node's dimensions is stuck in the cycle.
+        axis: Axis
+    },
     /// The node's size is `AspectRatio` on both axes.
     /// 
     /// This also shows up as a `Cycle`.
-    AspectRatioOnBothAxes { node: Id },
+    AspectRatioOnBothAxes {
+        /// The id of the problematic node.
+        node: Id,
+    },
     /// A `FitContent` node only has `Fill` or `Frac` children, so its size collapsed to zero.
-    FitContentCollapsed { node: Id, axis: Axis },
+    FitContentCollapsed {
+        /// The id of the problematic node.
+        node: Id,
+        /// Which of the node's dimensions the problem was found in.
+        axis: Axis
+    },
     /// The node's min size is bigger than its max size.
-    MinAboveMax { node: Id, axis: Axis },
+    MinAboveMax {
+        /// The id of the problematic node.
+        node: Id,
+        /// Which of the node's dimensions the problem was found in.
+        axis: Axis
+    },
     /// A `FitContent` node couldn't determine consistent sizes for its `Frac` children, because they add up to more than 100%.
-    ImpossibleFracChildren { node: Id, axis: Axis },
+    ImpossibleFracChildren {
+        /// The id of the problematic node.
+        node: Id,
+        /// Which of the node's dimensions the problem was found in.
+        axis: Axis
+    },
     /// The node's size is infinite or NaN.
-    NotFinite { node: Id, axis: Axis },
+    NotFinite {
+        /// The id of the problematic node.
+        node: Id,
+        /// Which of the node's dimensions the problem was found in.
+        axis: Axis
+    },
 }
 
 impl<Id: Debug> std::fmt::Display for LayoutWarning<Id> {
@@ -231,7 +317,7 @@ impl<Id: Debug> std::fmt::Display for LayoutWarning<Id> {
     }
 }
 
-/// What to do if a freely placed node would extend past the window edge. It has no effect on the children of a `Stack` or a `Grid`, unless they are `free_placement`.
+/// What to do if a freely placed node would extend past the edges of the window. It has no effect on the children of a `Stack` or a `Grid`, unless they are `free_placement`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum WindowOverflow {
     /// Leave the node where it is, even if it extends past the window edge.
@@ -243,75 +329,126 @@ pub enum WindowOverflow {
     Flip,
 }
 
+/// The way that a stack's children are arranged along its main axis.
 #[derive(Debug, Clone, Copy, Hash, PartialEq)]
 pub enum Arrange {
+    /// The children are arranged close together at the start of the stack.
     Start,
+    /// The children are arranged close together at the end of the stack.
     End,
+    /// The children are arranged close together in the center of the stack.
     Center,
+    /// The free space is divided equally between the children, with no space at the edges.
     SpaceBetween,
+    /// Each child gets an equal amount of free space on both sides, so the space at the edges is half the space between the children.
     SpaceAround,
+    /// The free space is divided equally between the children and the edges.
     SpaceEvenly,
 }
 
+/// What determines the size and number of cells on the main axis of a grid.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MainAxisCellSize {
+    /// Fix the number of cells and derive the cell size from the grid size.  
     Count(u32),
+    /// Fix the size of the cells and derive the cell count from the grid size.
+    /// 
+    /// If the grid is `FitContent` on the main axis, the grid will only have one cell per row/column.  
     Width(f32),
 }
 
+/// Whether the node is a stack or a grid that arranges its children according to a specific rule.
+/// 
+/// Individual children can override this by setting `free_placement = true`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ChildrenLayout {
+    /// Every child can position itself freely according to its `Pos`.
     Free,
+    /// Children are arranged on a stack.
+    /// 
+    /// This means that the children's `Pos` value on the stack's axis is ignored, but it can still be used to control alignment on the cross axis. 
     Stack {
+        /// The way that the stack's children are arranged along its main axis.
         arrange: Arrange,
+        /// The "main" axis along which the children are stacked.
         axis: Axis,
+        /// The spacing between the stacked children.
         spacing: f32,
     },
+    /// Children are arranged in a grid.
+    ///
+    /// The `Pos` value of the children on both axes can still be used to place them within the space of the grid cell.
     Grid {
+        /// What determines the size and number of cells on the main axis of the grid.
         columns: MainAxisCellSize,
+        /// The spacing between grid elements along the `X` axis.
         spacing_x: f32,
+        /// The spacing between grid elements along the `Y` axis.
         spacing_y: f32,
+        /// The axis along which the children are arranged.
         main_axis: Axis,
+        /// Whether later children can fill a gap left by previous children.
+        /// 
+        /// Gaps can only be left when elements have span greater than the default of one.
         backfill: bool,
     },
 }
 
+/// The text content of a node, if any. The solver will measure it with `TreeAdapter::measure_text_width()` and `TreeAdapter::measure_text_height()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextContent {
+    /// The node has no text.
     None,
-    Box,
-    Edit,
+    /// Text that wraps. Its height depends on the node's width.
+    Wrapping,
+    /// Text that doesn't wrap. Its width and height don't depend on the node's size.
+    Fixed,
 }
 
+/// The parameters that define the layout behavior of a node, such as its size, position, whether it's a stack or a grid, etc.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LayoutParams {
+    /// The position of a layout node in the space of its parent.
+    pub position: Xy<Pos>,
+    /// The size of a layout element on its two axes.
     pub size: Xy<Size>,
+    /// The minimum size of a layout element on its two axes.
     pub min_size: Xy<Option<Size>>,
+    /// The maximum size of a layout element on its two axes.
     pub max_size: Xy<Option<Size>>,
+    /// The space that this node keeps for itself as padding before giving space to its children.
+    pub padding: Xy<[f32; 2]>,
+    /// Whether the node is a stack of a grid.
+    pub children_layout: ChildrenLayout,
+    /// Whether this children should ignore the parent's `ChildrenLayout` and place itself freely even if the parent is a stack or a grid.
+    pub free_placement: bool,
+    /// Whether this node should occupy more than one cell if this node is a child of a grid.
+    pub grid_span: Xy<u16>,
+    /// The text content of this node, if any.
+    pub text: TextContent,
+    /// The image or fixed-size content of a node, if any. 
+    pub image: Option<Xy<f32>>,
+    /// The "origin" of a layout element inside its own rectangle.
+    pub anchor: Xy<Anchor>,
+    /// If true for one axis, children elements are placed starting from the right or bottom edge. If the node is a stack or a grid, the order in which children are arranged is reversed. 
+    pub children_origin_flipped: Xy<bool>,
+    /// The node's behavior if it extends past the edges of the window.
+    pub window_overflow: Xy<WindowOverflow>,
     /// In a stack, the `Fill` children share the free space in proportion to their weight. It has no effect on the other axis.
     pub fill_weight: f32,
-    pub padding: Xy<[f32; 2]>,
-    pub children_layout: ChildrenLayout,
-    pub free_placement: bool,
-    pub grid_span: Xy<u16>,
-    pub text: TextContent,
-    pub image: Option<Xy<f32>>,
-    /// For "exiting nodes". The solver skips a disabled node and its subtree. When a node is disabled, all its descendants must be disabled too.
+    /// True if a node should be ignored by the layout solver. When a node is disabled, all its descendants must be disabled too.
     pub disabled: bool,
-    pub position: Xy<Pos>,
-    pub anchor: Xy<Anchor>,
-    /// True if the children are placed from the right or the bottom edge.
-    pub children_origin_flipped: Xy<bool>,
-    pub window_overflow: Xy<WindowOverflow>,
+
 }
 
 impl LayoutParams {
+    /// Default values for the `LayoutParams`.
     pub const DEFAULT: LayoutParams = LayoutParams {
         size: Xy { x: Size::FitContent, y: Size::FitContent },
         min_size: Xy { x: None, y: None },
         max_size: Xy { x: None, y: None },
         fill_weight: 1.0,
-        padding: Xy { x: [0.0, 0.0], y: [0.0, 0.0] },
+        padding: Xy { x: [5.0, 5.0], y: [5.0, 5.0] },
         children_layout: ChildrenLayout::Free,
         free_placement: false,
         grid_span: Xy { x: 1, y: 1 },
@@ -319,10 +456,16 @@ impl LayoutParams {
         image: None,
         disabled: false,
         position: Xy { x: Pos::Center, y: Pos::Center },
-        anchor: Xy { x: Anchor::Start, y: Anchor::Start },
+        anchor: Xy { x: Anchor::Center, y: Anchor::Center },
         children_origin_flipped: Xy { x: false, y: false },
         window_overflow: Xy { x: WindowOverflow::Ignore, y: WindowOverflow::Ignore },
     };
+}
+
+impl Default for LayoutParams {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 thread_local! {
@@ -349,17 +492,17 @@ pub(crate) fn reset_arena(max_retained: usize) {
 /// Layout data for the whole tree. Without the `incremental` feature, it's empty.
 #[cfg(not(feature = "incremental"))]
 #[derive(Debug, Clone)]
-pub struct LayoutData<N>(std::marker::PhantomData<N>);
+pub struct LayoutData<I>(std::marker::PhantomData<I>);
 
 #[cfg(not(feature = "incremental"))]
-impl<N> LayoutData<N> {
+impl<I> LayoutData<I> {
     pub const fn new() -> Self {
         LayoutData(std::marker::PhantomData)
     }
 }
 
 #[cfg(not(feature = "incremental"))]
-impl<N> Default for LayoutData<N> {
+impl<I> Default for LayoutData<I> {
     fn default() -> Self {
         Self::new()
     }

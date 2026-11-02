@@ -9,7 +9,7 @@ fn stack(axis: Axis, spacing: f32, padding: f32) -> LayoutParams {
 }
 
 fn text(size: Xy<Size>) -> LayoutParams {
-    LayoutParams { size, text: TextContent::Box, ..LayoutParams::DEFAULT }
+    LayoutParams { size, text: TextContent::Wrapping, ..LayoutParams::DEFAULT }
 }
 
 fn main() {

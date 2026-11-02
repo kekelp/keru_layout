@@ -20,6 +20,8 @@ In short, the idea of this library is to consider the resulting graph of depende
     - Layouts where the graph of dependencies ends up being very different from the UI tree. For example, a layout with many `FitContent` or `AspectRatio` nodes.
     In these cases, `keru_layout` is significantly faster.
 
+    See [https://kekelp.github.io/arewelayoutyet/] for benchmarks. Forked from [https://github.com/marc2332/arewelayoutyet].
+
 - Correctness: in some rare cases, such as layouts with many `AspectRatio` dependencies, a traditional tree-based algorithms would have to perform many traversals of the UI tree in order to finally compute the correct results. To avoid spending too much time on layout, many libraries will cut corners and silently produce an inconsistent layout.
 
     I wrote about one of these cases in this older [blog post](https://kekelp.github.io/keru/blog/layout/).
@@ -99,6 +101,9 @@ If you don't want to use incremental relayout at all, you can turn off the `incr
 
     No, it's different. This algorithm doesn't model all dependencies as constraints, doesn't use the simplex method, or anything like that.
 
-## SVG output of the `example.rs` example
+
+## Screenshots
 
 ![Layout example](examples/example.svg "Svg output for the layout in `example.rs`")
+
+*SVG output of the `example.rs` example*

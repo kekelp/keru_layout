@@ -111,8 +111,8 @@ fn random_params(rng: &mut StdRng) -> LayoutParams {
         children_origin_flipped: Xy::new(rng.random_bool(0.2), rng.random_bool(0.2)),
         window_overflow: Xy::new(random_window_overflow(rng), random_window_overflow(rng)),
         text: match rng.random_range(0..20) {
-            0..3 => TextContent::Box,
-            3 => TextContent::Edit,
+            0..3 => TextContent::Wrapping,
+            3 => TextContent::Fixed,
             _ => TextContent::None,
         },
         ..LayoutParams::DEFAULT

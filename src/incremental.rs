@@ -25,9 +25,9 @@ pub enum IncrementalRelayoutOutcome {
 }
 
 /// The queued slots of an incremental relayout, in one bucket per level.
-pub(crate) struct Queue<'a, N> {
+pub(crate) struct Queue<'a, I> {
     arena: &'a bumpalo::Bump,
-    buckets: BumpVec<'a, BumpVec<'a, Slot<N>>>,
+    buckets: BumpVec<'a, BumpVec<'a, Slot<I>>>,
     /// The level of the bucket that is being emptied. The slots below it are done.
     cursor: usize,
     /// The number of computed slots above which the relayout stops.
@@ -36,13 +36,13 @@ pub(crate) struct Queue<'a, N> {
     computed: u32,
 }
 
-/// Layout data for the whole tree. The tree keeps it next to the nodes, and gives it to the solver with `TreeAdapter::layout_data`.
+/// Layout data for the whole tree.
 #[derive(Debug, Clone)]
-pub struct LayoutData<N> {
+pub struct LayoutData<I> {
     /// Nodes whose params changed, with their old params. It can contain duplicates.
-    pub(crate) changes: Vec<(N, LayoutParams)>,
+    pub(crate) changes: Vec<(I, LayoutParams)>,
     /// Nodes whose text or image changed. It can contain duplicates.
-    pub(crate) contents: Vec<N>,
+    pub(crate) contents: Vec<I>,
     /// The reason for the next relayout to be a full solve: the layout was never solved, or a structural change happened. A full solve clears it.
     pub(crate) pending_full_solve: Option<IncrementalRelayoutOutcome>,
     /// The window size of the last solve.
@@ -55,7 +55,8 @@ pub struct LayoutData<N> {
     pub(crate) current_level: u16,
 }
 
-impl<N> LayoutData<N> {
+impl<I> LayoutData<I> {
+    /// Creates a new [`LayoutData`].
     pub const fn new() -> Self {
         LayoutData { changes: Vec::new(), contents: Vec::new(), pending_full_solve: Some(IncrementalRelayoutOutcome::FallbackNeverSolved), last_window_size: Xy::new(0.0, 0.0), has_cycle: false, n_nodes: 0, current_level: 0 }
     }
@@ -66,7 +67,7 @@ impl<N> LayoutData<N> {
     }
 
     /// Records a change in the params of a node. A structural change makes the next relayout a full solve.
-    pub(crate) fn record_node_change(&mut self, i: N, old: &LayoutParams, new: &LayoutParams) {
+    pub(crate) fn record_node_change(&mut self, i: I, old: &LayoutParams, new: &LayoutParams) {
         if is_structural(old, new) {
             self.request_full_solve(IncrementalRelayoutOutcome::FallbackStructuralChange);
         } else {
@@ -85,7 +86,7 @@ impl<N> LayoutData<N> {
     }
 }
 
-impl<N> Default for LayoutData<N> {
+impl<I> Default for LayoutData<I> {
     fn default() -> Self {
         Self::new()
     }
