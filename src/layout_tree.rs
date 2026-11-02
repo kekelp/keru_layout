@@ -126,12 +126,12 @@ impl<T> LayoutTree<T> {
     /// Updates the context of a node. The next `solve_layout` measures the text of the node again.
     pub fn update_node_context(&mut self, i: NodeId, context: Option<T>) {
         self.nodes[i].context = context;
-        self.layout_data.contents.push(i);
+        self.layout_data.content_changes.push(i);
     }
 
     /// Makes the next `solve_layout` measure the text of a node again. Use it when the text changes and the context stays the same, for example when the context is an id and the text it points to changes.
     pub fn mark_text_changed(&mut self, i: NodeId) {
-        self.layout_data.contents.push(i);
+        self.layout_data.content_changes.push(i);
     }
 
     /// Makes the next `solve_layout` a full solve. Use it when the measure function changes, for example after a font change.

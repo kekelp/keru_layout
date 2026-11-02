@@ -159,7 +159,34 @@ impl Default for NodeLayoutData {
     }
 }
 
-use bumpalo::collections::Vec as BumpVec;
+/// A `Fill` child of a stack, in `solve_even_share`.
+#[derive(Debug, Clone)]
+pub(crate) struct FillChild {
+    content: Option<f32>,
+    min: Option<f32>,
+    max: Option<f32>,
+    capped_by_content: bool,
+    weight: f32,
+    frozen: bool,
+}
+
+impl FillChild {
+    #[inline(always)]
+    fn target(&self, share: f32) -> f32 {
+        share * self.weight
+    }
+
+    #[inline(always)]
+    fn size(&self, share: f32) -> f32 {
+        let target = self.target(share);
+        let raw = match self.content {
+            Some(content) if self.capped_by_content => content.min(target),
+            Some(content) => content.max(target),
+            None => target,
+        };
+        clamp(raw, self.min, self.max)
+    }
+}
 
 const MAX_FIT_STACK_FRAC: f32 = 0.999;
 const MAX_FIT_STACK_STEPS: usize = 64;
@@ -365,7 +392,6 @@ pub(crate) trait Solve: TreeAdapter {
         }
         self.prepare(self.root());
         self.solve();
-        reset_arena(self.max_retained_scratch_memory());
     }
 
     fn solve(&mut self) {
@@ -386,7 +412,7 @@ pub(crate) trait Solve: TreeAdapter {
         }
         #[cfg(feature = "incremental")]
         {
-            self.layout_data().n_nodes = n_nodes;
+            self.layout_data().n_nodes_solved = n_nodes;
         }
     }
 
@@ -647,40 +673,13 @@ pub(crate) trait Solve: TreeAdapter {
         clamp(size, min, max)
     }
 
-    fn solve_even_share(&self, i: Self::NodeId, axis: Axis) -> f32 {
-        #[derive(Debug)]
-        struct FillChild {
-            content: Option<f32>,
-            min: Option<f32>,
-            max: Option<f32>,
-            capped_by_content: bool,
-            weight: f32,
-            frozen: bool,
-        }
-
-        impl FillChild {
-            #[inline(always)]
-            fn target(&self, share: f32) -> f32 {
-                share * self.weight
-            }
-
-            #[inline(always)]
-            fn size(&self, share: f32) -> f32 {
-                let target = self.target(share);
-                let raw = match self.content {
-                    Some(content) if self.capped_by_content => content.min(target),
-                    Some(content) => content.max(target),
-                    None => target,
-                };
-                clamp(raw, self.min, self.max)
-            }
-        }
-
+    fn solve_even_share(&mut self, i: Self::NodeId, axis: Axis) -> f32 {
         let own = inner(self.get_solved_value(i, axis, Kind::Final), self.total_padding(i, axis));
         let mut budget = (own - self.stack_gaps(i, axis)).max(0.0);
 
-        with_arena(|arena| {
-            let mut fills = BumpVec::new_in(arena);
+        let mut fills = std::mem::take(&mut self.layout_data().fills_scratch);
+        fills.clear();
+        let share = {
             let mut unfrozen_weight = 0.0;
             for_each_layout_child!(self, i, child, {
                 let node = self.node_layout_params(child);
@@ -750,7 +749,9 @@ pub(crate) trait Solve: TreeAdapter {
 
 
             share
-        })
+        };
+        self.layout_data().fills_scratch = fills;
+        share
     }
 
     /// Assigns the cells of a grid with `MainAxisCellSize::Width` columns, from its `Final` size on the main axis.
@@ -794,8 +795,9 @@ pub(crate) trait Solve: TreeAdapter {
     }
 
     fn assign_grid_cells_with_spans(&mut self, i: Self::NodeId, n_main: usize, main_axis: Axis, backfill: bool) -> usize {
-        with_arena(|arena| {
-            let mut occupied = BumpVec::new_in(arena);
+        let mut occupied = std::mem::take(&mut self.layout_data().occupied_scratch);
+        occupied.clear();
+        let n_lines = {
             let mut cursor_line = 0;
             let mut cursor_pos = 0;
 
@@ -836,7 +838,9 @@ pub(crate) trait Solve: TreeAdapter {
             });
 
             occupied.len() / n_main
-        })
+        };
+        self.layout_data().occupied_scratch = occupied;
+        n_lines
     }
 
     #[inline(always)]

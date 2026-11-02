@@ -11,7 +11,6 @@ mod incremental;
 mod layout_tree;
 
 
-use std::cell::RefCell;
 use std::fmt::Debug;
 use std::ops::{Index, IndexMut};
 
@@ -21,7 +20,7 @@ pub(crate) use solve::*;
 pub(crate) use incremental::*;
 pub(crate) use place::Place;
 #[cfg(feature = "incremental")]
-pub use incremental::{IncrementalRelayoutOutcome, LayoutData};
+pub use incremental::IncrementalRelayoutOutcome;
 #[cfg(feature = "incremental")]
 pub use layout_tree::{LayoutTree, NodeId, measure_monospace_text};
 
@@ -63,11 +62,6 @@ pub trait TreeAdapter {
     /// 
     /// Depending on the use case, this can be reported to the user.
     fn layout_warning(&mut self, _warning: LayoutWarning<Self::NodeId>) {}
-
-    /// The maximum amount of scratch memory that the layout solver can retain.
-    fn max_retained_scratch_memory(&self) -> usize {
-        1 << 20
-    }
 
     /// Solves the layout on all nodes.
     fn solve_layout(&mut self) {
@@ -468,40 +462,66 @@ impl Default for LayoutParams {
     }
 }
 
-thread_local! {
-    static THREAD_ARENA: RefCell<bumpalo::Bump> = RefCell::new(bumpalo::Bump::new());
-}
-
-pub(crate) fn with_arena<F, R>(f: F) -> R
-where
-    F: FnOnce(&bumpalo::Bump) -> R,
-{
-    THREAD_ARENA.with(|arena| f(&arena.borrow()))
-}
-
-pub(crate) fn reset_arena(max_retained: usize) {
-    THREAD_ARENA.with(|arena| {
-        let mut arena = arena.borrow_mut();
-        arena.reset();
-        if arena.allocated_bytes() > max_retained {
-            *arena = bumpalo::Bump::with_capacity(max_retained.saturating_sub(8192));
-        }
-    });
-}
-
-/// Layout data for the whole tree. Without the `incremental` feature, it's empty.
-#[cfg(not(feature = "incremental"))]
+/// Layout data for the whole tree. Without the `incremental` feature, it only holds scratch memory for the solver.
 #[derive(Debug, Clone)]
-pub struct LayoutData<I>(std::marker::PhantomData<I>);
+pub struct LayoutData<I> {
+    pub(crate) fills_scratch: Vec<FillChild>,
+    pub(crate) occupied_scratch: Vec<bool>,
 
-#[cfg(not(feature = "incremental"))]
+    #[cfg(feature = "incremental")]
+    pub(crate) node_changes: Vec<(I, LayoutParams)>,
+    #[cfg(feature = "incremental")]
+    pub(crate) content_changes: Vec<I>,
+    #[cfg(feature = "incremental")]
+    pub(crate) pending_full_solve: Option<IncrementalRelayoutOutcome>,
+    #[cfg(feature = "incremental")]
+    pub(crate) last_window_size: Xy<f32>,
+    #[cfg(feature = "incremental")]
+    pub(crate) has_cycle: bool,
+    #[cfg(feature = "incremental")]
+    pub(crate) n_nodes_solved: u32,
+    /// During a full solve, 1 + the highest level of the dependencies of the slot that is being solved.
+    #[cfg(feature = "incremental")]
+    pub(crate) current_level: u16,
+    #[cfg(feature = "incremental")]
+    pub(crate) buckets: Vec<Vec<Slot<I>>>,
+    #[cfg(feature = "incremental")]
+    pub(crate) cursor: usize,
+
+    #[cfg(not(feature = "incremental"))]
+    _marker: std::marker::PhantomData<I>,
+}
+
 impl<I> LayoutData<I> {
+    /// Creates a new [`LayoutData`].
     pub const fn new() -> Self {
-        LayoutData(std::marker::PhantomData)
+        LayoutData {
+            #[cfg(feature = "incremental")]
+            node_changes: Vec::new(),
+            #[cfg(feature = "incremental")]
+            content_changes: Vec::new(),
+            #[cfg(feature = "incremental")]
+            pending_full_solve: Some(IncrementalRelayoutOutcome::FallbackNeverSolved),
+            #[cfg(feature = "incremental")]
+            last_window_size: Xy::new(0.0, 0.0),
+            #[cfg(feature = "incremental")]
+            has_cycle: false,
+            #[cfg(feature = "incremental")]
+            n_nodes_solved: 0,
+            #[cfg(feature = "incremental")]
+            current_level: 0,
+            #[cfg(feature = "incremental")]
+            buckets: Vec::new(),
+            #[cfg(feature = "incremental")]
+            cursor: 0,
+            fills_scratch: Vec::new(),
+            occupied_scratch: Vec::new(),
+            #[cfg(not(feature = "incremental"))]
+            _marker: std::marker::PhantomData,
+        }
     }
 }
 
-#[cfg(not(feature = "incremental"))]
 impl<I> Default for LayoutData<I> {
     fn default() -> Self {
         Self::new()
