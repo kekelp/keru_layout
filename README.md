@@ -12,24 +12,17 @@ In short, the idea of this library is to consider the resulting graph of depende
 
 ## Advantages
 
-- Performance: this library is very fast. Most layouts fall in either of two categories:
+- Performance: this library is very fast. [See this page for benchmarks](https://kekelp.github.io/arewelayoutyet/). Forked from [this repo](https://github.com/marc2332/arewelayoutyet) from the Torin author.
 
-    - Layouts where the graph of dependencies ends up being fairly similar to the real UI tree. For example, a layout composed completely of nested `Frac(0.5)` elements.
-    In these cases, `keru_layout` is on par with well-optimized implementations of the traditional tree-based algorithms.
-
-    - Layouts where the graph of dependencies ends up being very different from the UI tree. For example, a layout with many `FitContent` or `AspectRatio` nodes.
-    In these cases, `keru_layout` is significantly faster.
-
-    See [https://kekelp.github.io/arewelayoutyet/] for benchmarks. Forked from [https://github.com/marc2332/arewelayoutyet].
+    `keru_layout` is the fastest or close to the fastest in all the categories that it supports. What points to an intrinsic advantage of the algorithm is that while other libraries have their strenghts and their weaknesses, `keru_layout` is consistently fast in all cases.    
 
 - Correctness: in some rare cases, such as layouts with many `AspectRatio` dependencies, a traditional tree-based algorithms would have to perform many traversals of the UI tree in order to finally compute the correct results. To avoid spending too much time on layout, many libraries will cut corners and silently produce an inconsistent layout.
 
     I wrote about one of these cases in this older [blog post](https://kekelp.github.io/keru/blog/layout/).
 
-- Developer Experience: while it's usually not a problem to work around the correctness issues of traditional layout algorithms, it can still be confusing to run into them during development. Using a more consistent algorithm with less edge cases and surprises helps.
+- Developer Experience: while it's usually not a problem to work around the correctness issues of traditional layout algorithms, it can still be confusing to run into them during development. Using a more consistent algorithm leads to less surprises and less confusion.
 
-- Debuggability: almost all layout systems can express cyclic dependencies between elements, but in a traditional tree-based algorithm, this will result in a silently "broken" or inconsistent layout. With a graph algorithm we can give the user a clear warning and an accurate list of the nodes that were stuck in cycles.
-
+- Debuggability: almost all layout systems can express cyclic dependencies between elements, but in a traditional tree-based algorithm, this will result in a silently "broken" or inconsistent layout. With this algorithm, we can give the user a clear warning and an accurate list of the nodes that were stuck in cycles.
 
 ## Usage
 
