@@ -134,16 +134,24 @@ pub(crate) trait Place: Solve {
                 self.place_child_free(child, &frame, child_size);
             } else {
                 let child_cell = self.node_layout_data(child).grid_cell;
-                let mut child_rect = Xy::new([0.0, 0.0], [0.0, 0.0]);
+                let span = self.node_layout_params(child).grid_span;
+                // The child is positioned inside the rect of its cells, as if the cells were its parent.
+                let mut cell_frame = ParentFrame { rect: Xy::new([0.0, 0.0], [0.0, 0.0]), padding: Xy::new([0.0, 0.0], [0.0, 0.0]), flipped: frame.flipped };
                 for axis in [X, Y] {
+                    let span = (span[axis].max(1).min(lines[axis].max(1))) as f32;
                     let offset = child_cell[axis] as f32 * (cell[axis] + spacing[axis]);
-                    child_rect[axis] = if ! frame.flipped[axis] {
+                    let length = span * cell[axis] + (span - 1.0) * spacing[axis];
+                    cell_frame.rect[axis] = if ! frame.flipped[axis] {
                         let start = frame.rect[axis][0] + frame.padding[axis][0] + offset;
-                        [start, start + child_size[axis]]
+                        [start, start + length]
                     } else {
                         let end = frame.rect[axis][1] - frame.padding[axis][1] - offset;
-                        [end - child_size[axis], end]
+                        [end - length, end]
                     };
+                }
+                let mut child_rect = Xy::new([0.0, 0.0], [0.0, 0.0]);
+                for axis in [X, Y] {
+                    child_rect[axis] = self.resolve_pos_on_axis(&cell_frame, child, axis, child_size[axis]);
                 }
                 self.place(child, child_rect, frame.rect);
             }
