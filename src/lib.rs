@@ -253,22 +253,14 @@ pub enum Arrange {
     SpaceEvenly,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum Direction {
-    LeftToRight,
-    RightToLeft,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GridFlow {
     pub main_axis: Axis,
-    pub x_fill_direction: Direction,
-    pub y_fill_direction: Direction,
     pub backfill: bool,
 }
 
 impl GridFlow {
-    pub const DEFAULT: Self = Self { main_axis: Axis::X, x_fill_direction: Direction::LeftToRight, y_fill_direction: Direction::LeftToRight, backfill: false };
+    pub const DEFAULT: Self = Self { main_axis: Axis::X, backfill: false };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

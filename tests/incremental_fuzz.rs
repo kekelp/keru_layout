@@ -75,9 +75,7 @@ fn random_window_overflow(rng: &mut StdRng) -> WindowOverflow {
 }
 
 fn random_grid_flow(rng: &mut StdRng) -> GridFlow {
-    let mut direction = || if rng.random_bool(0.5) { Direction::LeftToRight } else { Direction::RightToLeft };
-    let (x_fill_direction, y_fill_direction) = (direction(), direction());
-    GridFlow { main_axis: random_axis(rng), x_fill_direction, y_fill_direction, backfill: rng.random_bool(0.3) }
+    GridFlow { main_axis: random_axis(rng), backfill: rng.random_bool(0.3) }
 }
 
 /// A size of the same kind with a new number, or `None` if the kind has no number.

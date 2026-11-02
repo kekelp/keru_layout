@@ -136,8 +136,14 @@ pub(crate) trait Place: Solve {
                 let child_cell = self.node_layout_data(child).grid_cell;
                 let mut child_rect = Xy::new([0.0, 0.0], [0.0, 0.0]);
                 for axis in [X, Y] {
-                    let start = frame.rect[axis][0] + frame.padding[axis][0] + child_cell[axis] as f32 * (cell[axis] + spacing[axis]);
-                    child_rect[axis] = [start, start + child_size[axis]];
+                    let offset = child_cell[axis] as f32 * (cell[axis] + spacing[axis]);
+                    child_rect[axis] = if ! frame.flipped[axis] {
+                        let start = frame.rect[axis][0] + frame.padding[axis][0] + offset;
+                        [start, start + child_size[axis]]
+                    } else {
+                        let end = frame.rect[axis][1] - frame.padding[axis][1] - offset;
+                        [end - child_size[axis], end]
+                    };
                 }
                 self.place(child, child_rect, frame.rect);
             }

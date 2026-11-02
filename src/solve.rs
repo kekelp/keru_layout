@@ -774,23 +774,6 @@ pub(crate) trait Solve: TreeAdapter {
         lines[flow.main_axis] = n_main as u16;
         lines[flow.main_axis.other()] = n_lines as u16;
         self.node_layout_data_mut(i).grid_lines = lines;
-
-        for axis in [X, Y] {
-            let reversed = match axis {
-                X => flow.x_fill_direction == Direction::RightToLeft,
-                Y => flow.y_fill_direction == Direction::RightToLeft,
-            };
-            if reversed {
-                for_each_layout_child!(self, i, child, {
-                    if ! self.node_layout_params(child).free_placement {
-                        // The placement clamps the span to the number of lines.
-                        let span = self.node_layout_params(child).grid_span[axis].max(1).min(lines[axis]);
-                        let cell = &mut self.node_layout_data_mut(child).grid_cell[axis];
-                        *cell = lines[axis] - span - *cell;
-                    }
-                });
-            }
-        }
     }
 
     /// Without spans, the children go into predictable positions and `backfill` has no effect, because there are no holes.
