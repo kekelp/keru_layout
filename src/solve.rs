@@ -797,6 +797,7 @@ pub(crate) trait Solve: TreeAdapter {
         with_arena(|arena| {
             let mut occupied = BumpVec::new_in(arena);
             let mut cursor_line = 0;
+            let mut cursor_pos = 0;
 
             for_each_layout_child!(self, i, child, {
                 if ! self.node_layout_params(child).free_placement {
@@ -804,14 +805,15 @@ pub(crate) trait Solve: TreeAdapter {
                     let span_pos = (span[main_axis].max(1) as usize).min(n_main);
                     let span_line = span[main_axis.other()].max(1) as usize;
 
-                    let mut line = if backfill { 0 } else { cursor_line };
+                    let (mut line, mut start) = if backfill { (0, 0) } else { (cursor_line, cursor_pos) };
                     let pos = 'search: loop {
-                        for pos in 0..=n_main - span_pos {
+                        for pos in start..=n_main - span_pos {
                             if grid_area_is_free(&occupied, n_main, line, pos, span_line, span_pos) {
                                 break 'search pos;
                             }
                         }
                         line += 1;
+                        start = 0;
                     };
 
                     let needed = (line + span_line) * n_main;
@@ -823,6 +825,7 @@ pub(crate) trait Solve: TreeAdapter {
                     }
                     if ! backfill {
                         cursor_line = line;
+                        cursor_pos = pos + span_pos;
                     }
 
                     let mut cell = Xy::new(0, 0);
