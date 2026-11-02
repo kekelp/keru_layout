@@ -67,7 +67,7 @@ Then, you can call the trait's `solve_layout()` method to calculate the layout a
 
 ### `LayoutTree` API
 
-Create a `LayoutTree`, then insert nodes into the layout tree to match the structure of your UI tree, run `tree.compute_layout()`, then use `tree.layout()` on each node to extract the results and use them to update the corresponding UI node.
+Create a `LayoutTree`, then insert nodes into the layout tree to match the structure of your UI tree, run `tree.solve_layout()`, then use `tree.layout()` on each node to extract the results and use them to update the corresponding UI node.
 
 There's also a function that draws a SVG image to show the resulting layout.
 
@@ -78,7 +78,7 @@ let mut tree: LayoutTree = LayoutTree::new();
 let row = tree.add_node(tree.root(), LayoutParams { size: Xy::new(Size::FitContent, Size::FitContent), ..LayoutParams::DEFAULT });
 let item = tree.add_node(row, LayoutParams { size: Xy::new(Size::Pixels(100.0), Size::Pixels(20.0)), ..LayoutParams::DEFAULT });
 tree.set_window_size(Xy::new(800.0, 600.0));
-tree.compute_layout();
+tree.solve_layout();
 let rect = tree.layout(item);
 // Draw the layout rectangles as SVG to inspect the layout
 std::fs::write("example.svg", tree.to_svg()).unwrap();

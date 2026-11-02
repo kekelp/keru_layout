@@ -19,9 +19,9 @@ pub(crate) struct LayoutNode<T> {
     pub(crate) context: Option<T>,
 }
 
-/// A tree of layout nodes. It records the changes to the nodes, and `compute_layout` uses them to do an incremental relayout when it can.
+/// A tree of layout nodes. It records the changes to the nodes, and `solve_layout` uses them to do an incremental relayout when it can.
 ///
-/// `T` is the type of the context of each node, for example its text. The measure function of `compute_layout_with_measure` receives it.
+/// `T` is the type of the context of each node, for example its text. The measure function of `solve_layout_with_measure` receives it.
 ///
 /// The tree always has a root node, which takes the size of the window. All other nodes are descendants of the root.
 ///
@@ -123,18 +123,18 @@ impl<T> LayoutTree<T> {
         &self.nodes[i].params
     }
 
-    /// Updates the context of a node. The next `compute_layout` measures the text of the node again.
+    /// Updates the context of a node. The next `solve_layout` measures the text of the node again.
     pub fn update_node_context(&mut self, i: NodeId, context: Option<T>) {
         self.nodes[i].context = context;
         self.layout_data.contents.push(i);
     }
 
-    /// Makes the next `compute_layout` measure the text of a node again. Use it when the text changes and the context stays the same, for example when the context is an id and the text it points to changes.
+    /// Makes the next `solve_layout` measure the text of a node again. Use it when the text changes and the context stays the same, for example when the context is an id and the text it points to changes.
     pub fn mark_text_changed(&mut self, i: NodeId) {
         self.layout_data.contents.push(i);
     }
 
-    /// Makes the next `compute_layout` a full solve. Use it when the measure function changes, for example after a font change.
+    /// Makes the next `solve_layout` a full solve. Use it when the measure function changes, for example after a font change.
     pub fn invalidate(&mut self) {
         self.layout_data.request_full_solve(IncrementalRelayoutOutcome::FallbackInvalidated);
     }
@@ -149,12 +149,12 @@ impl<T> LayoutTree<T> {
         std::iter::successors(self.nodes[i].first_child, |&child| self.nodes[child].next_sibling)
     }
 
-    /// The rect of a node from the last `compute_layout`, in logical pixels.
+    /// The rect of a node from the last `solve_layout`, in logical pixels.
     pub fn layout(&self, i: NodeId) -> XyRect {
         self.nodes[i].rect
     }
 
-    /// The warnings from the last `compute_layout`. An incremental relayout reports only the warnings of the slots that it computes again.
+    /// The warnings from the last `solve_layout`. An incremental relayout reports only the warnings of the slots that it computes again.
     pub fn warnings(&self) -> &[LayoutWarning<NodeId>] {
         &self.warnings
     }
@@ -357,14 +357,14 @@ impl<T> LayoutTree<T> {
 }
 
 impl<T> LayoutTree<T> {
-    /// Draws an SVG image representing the layout rectangles from the last `compute_layout()`.
+    /// Draws an SVG image representing the layout rectangles from the last `solve_layout()`.
     pub fn to_svg(&self) -> String {
         self.to_svg_inner(|_| "")
     }
 }
 
 impl<T: AsRef<str>> LayoutTree<T> {
-    /// Draws an SVG image representing the layout from the last `compute_layout()`.
+    /// Draws an SVG image representing the layout from the last `solve_layout()`.
     /// 
     /// The text will only have the correct dimensions if [`measure_monospace_text()`] is used as the measurement function. 
     pub fn to_svg_with_text(&self) -> String  {
