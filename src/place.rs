@@ -10,9 +10,10 @@ pub(crate) struct ParentFrame {
 /// The placement part of the layout. Every `TreeAdapter` gets it from the blanket impl.
 pub(crate) trait Place: Solve {
     fn place_nodes(&mut self) {
-        let window = self.window_size();
-        let window = Xy::new([0.0, window.x], [0.0, window.y]);
-        self.place(self.root(), window, window);
+        let root = self.root();
+        let size = self.node_layout_data(root).size();
+        let rect = Xy::new([0.0, size.x], [0.0, size.y]);
+        self.place(root, rect, rect);
     }
 
     /// Gives a node its final rect, then places its children inside it.
@@ -31,8 +32,7 @@ pub(crate) trait Place: Solve {
 
     /// Places a freely placed node and its subtree, inside the rect of its parent. It panics if the node is not freely placed.
     fn place_free_node(&mut self, node: Self::NodeId, parent_rect: XyRect) {
-        assert!(node != self.root(), "place_free_placed_subtree called on the root, which is not freely placed");
-        let parent = self.parent(node);
+        let parent = self.parent(node).expect("place_free_placed_subtree called on the root, which is not freely placed");
         let is_free = self.node_layout_params(node).free_placement || self.node_layout_params(parent).children_layout == ChildrenLayout::Free;
         assert!(is_free, "place_free_placed_subtree called on {node:?}, which is not freely placed");
         let frame = self.parent_frame(parent, parent_rect);
@@ -212,15 +212,15 @@ pub(crate) trait Place: Solve {
         self.place(child, child_rect, frame.rect);
     }
 
-    fn apply_window_overflow(&self, frame: &ParentFrame, child: Self::NodeId, axis: Axis, rect: [f32; 2]) -> [f32; 2] {
-        let params = self.node_layout_params(child);
+    fn apply_window_overflow(&mut self, frame: &ParentFrame, child: Self::NodeId, axis: Axis, rect: [f32; 2]) -> [f32; 2] {
+        let params = *self.node_layout_params(child);
         let behavior = params.window_overflow[axis];
         if behavior == WindowOverflow::Ignore {
             return rect;
         }
 
         let win_low = 0.0;
-        let win_high = self.window_size()[axis];
+        let win_high = self.layout_data().window_size[axis];
 
         let [lo, hi] = rect;
         let size = hi - lo;

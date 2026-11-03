@@ -70,14 +70,13 @@ fn is_structural(old: &LayoutParams, new: &LayoutParams) -> bool {
 }
 
 pub(crate) trait Incremental: Solve {
-    fn measure_sizes_incremental(&mut self) -> IncrementalRelayoutOutcome {
-        let window_size = self.window_size();
+    fn measure_sizes_incremental(&mut self, window_size: Xy<f32>) -> IncrementalRelayoutOutcome {
         let root = self.root();
         let data = self.layout_data();
         // Take out the changes and content_changes
         let mut changes = std::mem::take(&mut data.node_changes);
         let mut content_changes = std::mem::take(&mut data.content_changes);
-        let last_window_size = std::mem::replace(&mut data.last_window_size, window_size);
+        let last_window_size = std::mem::replace(&mut data.window_size, window_size);
         let max_computed = data.n_nodes_solved / 2;
         data.cursor = 0;
 
@@ -86,9 +85,10 @@ pub(crate) trait Incremental: Solve {
         // Too many changes, so give up on incremental relayout.
             outcome = IncrementalRelayoutOutcome::FallbackTooMuchWork;
         } else {
+            // The `Frac` and `Fill` sizes of the root read the window size.
             for axis in [X, Y] {
                 if last_window_size[axis] != window_size[axis] {
-                    self.queue(Slot { node: root, axis, kind: Kind::Regular });
+                    self.queue_declared(root, axis, |size| size.is_flex());
                 }
             }
             for (i, old) in &changes {
@@ -124,37 +124,37 @@ pub(crate) trait Incremental: Solve {
     }
 
     /// Does an incremental relayout, or a full solve if the registered changes need one. If `verify` is true, it also does a full solve and compares the sizes.
-    fn solve_incremental(&mut self, verify: bool) -> IncrementalRelayoutOutcome {
+    fn solve_incremental(&mut self, window_size: Xy<f32>, verify: bool) -> IncrementalRelayoutOutcome {
         let data = self.layout_data();
         let outcome = if let Some(reason) = data.pending_full_solve {
             reason
         } else if data.has_cycle {
             IncrementalRelayoutOutcome::FallbackCycle
         } else {
-            self.measure_sizes_incremental()
+            self.measure_sizes_incremental(window_size)
         };
         match outcome {
             IncrementalRelayoutOutcome::Success { .. } => match verify {
                 true => {
-                    if ! self.run_full_solve_and_compare() {
+                    if ! self.run_full_solve_and_compare(window_size) {
                         return IncrementalRelayoutOutcome::CheckedIncrementalRelayoutMismatch;
                     }
                 }
                 false => self.place_nodes(),
             },
-            _ => self.solve_layout(),
+            _ => self.solve_layout(window_size),
         }
         outcome
     }
 
-    fn run_full_solve_and_compare(&mut self) -> bool {
+    fn run_full_solve_and_compare(&mut self, window_size: Xy<f32>) -> bool {
         let mut incremental = Vec::new();
         let mut next = Some(self.root());
         while let Some(i) = next {
             incremental.push((i, self.node_layout_data(i).values.map(f32::to_bits)));
             next = self.tree_traversal_next(i);
         }
-        self.solve_layout();
+        self.solve_layout(window_size);
         for (i, values) in incremental {
             if self.node_layout_data(i).values.map(f32::to_bits) != values {
                 return false;
@@ -180,13 +180,12 @@ pub(crate) trait Incremental: Solve {
                     Kind::Max => params.max_size[axis],
                     _ => Some(params.size[axis]),
                 };
-                if read(old) != read(new_params) && ! (kind == Kind::Regular && i == self.root()) {
+                if read(old) != read(new_params) {
                     self.queue(Slot { node: i, axis, kind });
                 }
             }
             // A `FitContent` stack reads the `Frac` numbers of its children from their params, without a slot.
-            if old.size[axis] != new_params.size[axis] && matches!(new_params.size[axis], Size::Frac(_)) && i != self.root() && ! new_params.free_placement {
-                let parent = self.parent(i);
+            if old.size[axis] != new_params.size[axis] && matches!(new_params.size[axis], Size::Frac(_)) && ! new_params.free_placement && let Some(parent) = self.parent(i) {
                 self.queue_declared(parent, axis, |size| size == Size::FitContent);
             }
         }
@@ -197,8 +196,7 @@ pub(crate) trait Incremental: Solve {
             }
         }
 
-        if old.fill_weight != new_params.fill_weight && i != self.root() && ! new_params.free_placement {
-            let parent = self.parent(i);
+        if old.fill_weight != new_params.fill_weight && ! new_params.free_placement && let Some(parent) = self.parent(i) {
             if let Some(axis) = self.stack_axis(parent) {
                 self.queue_declared(i, axis, |size| size.is_fill());
                 self.queue_even_share(parent);
@@ -335,18 +333,14 @@ pub(crate) trait Incremental: Solve {
                         }
                     }
                 });
-                if i != self.root() && ! self.node_layout_params(i).free_placement {
-                    let parent = self.parent(i);
-                    if self.stack_axis(parent) == Some(axis) && ! self.any_size_is_fill(i, axis) {
-                        self.queue(Slot { node: parent, axis, kind: Kind::EvenShare });
-                    }
+                if let Some(parent) = self.stack_parent(i, axis) && ! self.any_size_is_fill(i, axis) {
+                    self.queue(Slot { node: parent, axis, kind: Kind::EvenShare });
                 }
             }
             declared => {
                 self.queue(Slot { node: i, axis, kind: Kind::Final });
-                if i != self.root() && ! self.node_layout_params(i).free_placement {
+                if ! self.node_layout_params(i).free_placement && let Some(parent) = self.parent(i) {
                     let size = self.read_size(i, axis, declared).unwrap();
-                    let parent = self.parent(i);
                     if self.stack_axis(parent) == Some(axis) && self.any_size_is_fill(i, axis) && ! size.is_fill() {
                         self.queue(Slot { node: parent, axis, kind: Kind::EvenShare });
                     }
@@ -362,10 +356,6 @@ pub(crate) trait Incremental: Solve {
     #[inline(always)]
     fn queue_declared(&mut self, i: Self::NodeId, axis: Axis, filter: impl Fn(Size) -> bool) {
         for kind in DECLARED_SIZES {
-            // The `Regular` slot of the root reads only the window size.
-            if kind == Kind::Regular && i == self.root() {
-                continue;
-            }
             if let Some(size) = self.read_size(i, axis, kind) && filter(size) {
                 self.queue(Slot { node: i, axis, kind });
             }

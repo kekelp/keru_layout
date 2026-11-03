@@ -30,10 +30,12 @@ pub use layout_tree::{LayoutTree, NodeId, measure_monospace_text};
 pub trait TreeAdapter {
     /// An id type that can be used to refer to nodes in your UI tree.
     type NodeId: Copy + Eq + Debug;
-    /// The `NodeId` that refers to the root node, which should correspond to the whole window.
+    /// The `NodeId` that refers to the root node.
+    /// 
+    /// The root node works as if it was a child of a node with the full `window_size` given to `solve_layout()`. Usually it should be `Size::Fill` on both axes so that it can take all of it.
     fn root(&self) -> Self::NodeId;
-    /// Get the `NodeId` for a node's parent.
-    fn parent(&self, i: Self::NodeId) -> Self::NodeId;
+    /// Get the `NodeId` for a node's parent, or `None` for the root.
+    fn parent(&self, i: Self::NodeId) -> Option<Self::NodeId>;
     /// Get the `NodeId` for a node's first child, or `None` if it has no children.
     fn first_child(&self, i: Self::NodeId) -> Option<Self::NodeId>;
     /// Get the `NodeId` for a node's next sibling, or `None` if it's the last child of its parent.
@@ -55,19 +57,16 @@ pub trait TreeAdapter {
     /// The output is provided in both absolute coordinates and relative to the parent, in logical pixels.
     fn write_output_rect(&mut self, i: Self::NodeId, rect: XyRect, local_rect: XyRect);
 
-    /// The size of the window, in logical pixels.
-    fn window_size(&self) -> Xy<f32>;
-    
     /// Called when the layout solver finds a problem in a node's layout.
     /// 
     /// Depending on the use case, this can be reported to the user.
     fn layout_warning(&mut self, _warning: LayoutWarning<Self::NodeId>) {}
 
-    /// Solves the layout on all nodes.
-    fn solve_layout(&mut self) {
+    /// Solves the layout on all nodes. `window_size` is the size of the window, in logical pixels.
+    fn solve_layout(&mut self, window_size: Xy<f32>) {
         #[cfg(feature = "incremental")]
         self.layout_data().clear();
-        self.measure_sizes();
+        self.measure_sizes(window_size);
         self.place_nodes();
     }
 
@@ -83,14 +82,14 @@ pub trait TreeAdapter {
     /// 
     /// Currently only the size-measuring part of the layout is incremental, while the placement isn't.
     #[cfg(feature = "incremental")]
-    fn solve_layout_incremental(&mut self) -> IncrementalRelayoutOutcome {
-        self.solve_incremental(false)
+    fn solve_layout_incremental(&mut self, window_size: Xy<f32>) -> IncrementalRelayoutOutcome {
+        self.solve_incremental(window_size, false)
     }
 
     /// Does `solve_layout_incremental`, then a full solve, and returns `IncrementalRelayoutOutcome::CheckedIncrementalRelayoutMismatch` if the result is different.
     #[cfg(feature = "incremental")]
-    fn solve_layout_incremental_checked(&mut self) -> IncrementalRelayoutOutcome {
-        self.solve_incremental(true)
+    fn solve_layout_incremental_checked(&mut self, window_size: Xy<f32>) -> IncrementalRelayoutOutcome {
+        self.solve_incremental(window_size, true)
     }
 
     /// Records that the params of a node changed for incremental relayouts. Call it after the tree has the new params. A structural change, such as a different size kind, makes the next relayout a full solve.
@@ -182,7 +181,7 @@ impl<T> IndexMut<Axis> for Xy<T> {
 pub type XyRect = Xy<[f32; 2]>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-/// The size of a layout element.
+/// The size of a layout node.
 pub enum Size {
     /// A fixed size in logical pixels.
     Pixels(f32),
@@ -203,7 +202,7 @@ pub enum Size {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-/// The "origin" of a layout element inside its own rectangle.
+/// The "origin" of a layout node inside its own rectangle.
 /// 
 /// For example, an element with `Size::Pixels(10.0)` and `Pos::Pixels(0.0)` on an axis will be placed at `[0.0, 10.0]`, `[-5.0, 5.0]` or `[-10.0, 0.0]` if its `Anchor` is `Start`, `Center` or `End` respectively.
 /// 
@@ -220,7 +219,7 @@ pub enum Anchor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-/// The position of a layout element in the space of its parent.
+/// The position of a layout node in the space of its parent.
 /// 
 /// If the node is a child of a stack, its `Pos` value on the stack's main axis is ignored, as the stack positions the child according to its own logic.
 /// 
@@ -404,11 +403,11 @@ pub enum TextContent {
 pub struct LayoutParams {
     /// The position of a layout node in the space of its parent.
     pub position: Xy<Pos>,
-    /// The size of a layout element on its two axes.
+    /// The size of a layout node on its two axes.
     pub size: Xy<Size>,
-    /// The minimum size of a layout element on its two axes.
+    /// The minimum size of a layout node on its two axes.
     pub min_size: Xy<Option<Size>>,
-    /// The maximum size of a layout element on its two axes.
+    /// The maximum size of a layout node on its two axes.
     pub max_size: Xy<Option<Size>>,
     /// The space that this node keeps for itself as padding before giving space to its children.
     pub padding: Xy<[f32; 2]>,
@@ -422,7 +421,7 @@ pub struct LayoutParams {
     pub text: TextContent,
     /// The image or fixed-size content of a node, if any. 
     pub image: Option<Xy<f32>>,
-    /// The "origin" of a layout element inside its own rectangle.
+    /// The "origin" of a layout node inside its own rectangle.
     pub anchor: Xy<Anchor>,
     /// If true for one axis, children elements are placed starting from the right or bottom edge. If the node is a stack or a grid, the order in which children are arranged is reversed. 
     pub children_origin_flipped: Xy<bool>,
@@ -467,6 +466,8 @@ impl Default for LayoutParams {
 pub struct LayoutData<I> {
     pub(crate) fills_scratch: Vec<FillChild>,
     pub(crate) occupied_scratch: Vec<bool>,
+    /// The `window_size` of the last solve.
+    pub(crate) window_size: Xy<f32>,
 
     #[cfg(feature = "incremental")]
     pub(crate) node_changes: Vec<(I, LayoutParams)>,
@@ -474,8 +475,6 @@ pub struct LayoutData<I> {
     pub(crate) content_changes: Vec<I>,
     #[cfg(feature = "incremental")]
     pub(crate) pending_full_solve: Option<IncrementalRelayoutOutcome>,
-    #[cfg(feature = "incremental")]
-    pub(crate) last_window_size: Xy<f32>,
     #[cfg(feature = "incremental")]
     pub(crate) has_cycle: bool,
     #[cfg(feature = "incremental")]
@@ -503,8 +502,6 @@ impl<I> LayoutData<I> {
             #[cfg(feature = "incremental")]
             pending_full_solve: Some(IncrementalRelayoutOutcome::FallbackNeverSolved),
             #[cfg(feature = "incremental")]
-            last_window_size: Xy::new(0.0, 0.0),
-            #[cfg(feature = "incremental")]
             has_cycle: false,
             #[cfg(feature = "incremental")]
             n_nodes_solved: 0,
@@ -516,6 +513,7 @@ impl<I> LayoutData<I> {
             cursor: 0,
             fills_scratch: Vec::new(),
             occupied_scratch: Vec::new(),
+            window_size: Xy::new(0.0, 0.0),
             #[cfg(not(feature = "incremental"))]
             _marker: std::marker::PhantomData,
         }

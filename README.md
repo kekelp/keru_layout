@@ -14,7 +14,9 @@ In short, the idea of this library is to consider the resulting graph of depende
 
 - Performance: this library is very fast. [See this page for benchmarks](https://kekelp.github.io/arewelayoutyet/). Forked from [this repo](https://github.com/marc2332/arewelayoutyet) from the Torin author.
 
-    `keru_layout` is the fastest or close to the fastest in all the categories that it supports. What points to an intrinsic advantage of the algorithm is that while other libraries have their strenghts and their weaknesses, `keru_layout` is consistently fast in all cases.    
+    `keru_layout` is the fastest or close to the fastest in all the categories that it supports. While other libraries have their strenghts and their weaknesses, `keru_layout` is consistently fast in all cases. 
+    
+    It's likely that the other libraries are going faster when their top-down or bottom-up traversals of the UI tree happen to line up with the real structure of the dependency graph, and slower when the shapes don't match as well. By traversing the dependency graph directly, the new algorithm has more consistent performance regardless of the layout.
 
 - Correctness: in some rare cases, such as layouts with many `AspectRatio` dependencies, a traditional tree-based algorithms would have to perform many traversals of the UI tree in order to finally compute the correct results. To avoid spending too much time on layout, many libraries will cut corners and silently produce an inconsistent layout.
 
@@ -70,8 +72,7 @@ use keru_layout::*;
 let mut tree: LayoutTree = LayoutTree::new();
 let row = tree.add_node(tree.root(), LayoutParams { size: Xy::new(Size::FitContent, Size::FitContent), ..LayoutParams::DEFAULT });
 let item = tree.add_node(row, LayoutParams { size: Xy::new(Size::Pixels(100.0), Size::Pixels(20.0)), ..LayoutParams::DEFAULT });
-tree.set_window_size(Xy::new(800.0, 600.0));
-tree.solve_layout();
+tree.solve_layout(Xy::new(800.0, 600.0));
 let rect = tree.layout(item);
 // Draw the layout rectangles as SVG to inspect the layout
 std::fs::write("example.svg", tree.to_svg()).unwrap();

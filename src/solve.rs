@@ -219,7 +219,7 @@ pub(crate) trait Solve: TreeAdapter {
             if let Some(sibling) = self.next_sibling(i) {
                 return Some(sibling);
             }
-            i = self.parent(i);
+            i = self.parent(i)?;
         }
     }
 
@@ -253,10 +253,17 @@ pub(crate) trait Solve: TreeAdapter {
         }
     }
 
+    /// The parent of `i`, if `i` is placed in a stack on `axis`.
+    #[inline(always)]
+    fn stack_parent(&self, i: Self::NodeId, axis: Axis) -> Option<Self::NodeId> {
+        let parent = self.parent(i)?;
+        (self.stack_axis(parent) == Some(axis) && ! self.node_layout_params(i).free_placement).then_some(parent)
+    }
+
+    #[cfg(feature = "incremental")]
     #[inline(always)]
     fn is_in_stack(&self, i: Self::NodeId, axis: Axis) -> bool {
-        let parent = self.parent(i);
-        self.stack_axis(parent) == Some(axis) && ! self.node_layout_params(i).free_placement
+        self.stack_parent(i, axis).is_some()
     }
 
     fn prepare(&mut self, i: Self::NodeId) {
@@ -334,12 +341,10 @@ pub(crate) trait Solve: TreeAdapter {
             }
             declared => match self.read_size(i, axis, declared).unwrap() {
                 Size::Pixels(_) => {}
-                _ if i == self.root() && kind == Kind::Regular => {}
                 Size::AspectRatio(_) => self.solve_slot(i, axis.other(), Kind::Final),
                 Size::Frac(_) => self.read_available_from_parent(slot),
                 Size::Fill => {
-                    if self.is_in_stack(i, axis) {
-                        let parent = self.parent(i);
+                    if let Some(parent) = self.stack_parent(i, axis) {
                         self.solve_slot(parent, axis, Kind::EvenShare);
                     } else {
                         self.read_available_from_parent(slot)
@@ -367,26 +372,24 @@ pub(crate) trait Solve: TreeAdapter {
         }
     }
 
-    /// Solves what `available_from_parent` reads.
+    /// Solves what `available_from_parent` reads. The root reads the window size, which is an input.
     #[inline(always)]
     fn read_available_from_parent(&mut self, slot: Slot<Self::NodeId>) {
         let i = slot.node;
-        if i == self.root() {
+        let Some(parent) = self.parent(i) else {
             return;
-        }
-        let parent = self.parent(i);
+        };
         self.solve_slot(parent, slot.axis, Kind::Final);
         if ! self.node_layout_params(i).free_placement && let Some(main) = self.width_grid_main_axis(parent) {
             self.solve_slot(parent, main, Kind::Final);
         }
     }
 
-    fn measure_sizes(&mut self) {
+    fn measure_sizes(&mut self, window_size: Xy<f32>) {
+        self.layout_data().window_size = window_size;
         #[cfg(feature = "incremental")]
         {
-            let window_size = self.window_size();
             let data = self.layout_data();
-            data.last_window_size = window_size;
             data.has_cycle = false;
             data.pending_full_solve = None;
         }
@@ -494,7 +497,6 @@ pub(crate) trait Solve: TreeAdapter {
         let i = slot.node;
         let axis = slot.axis;
         match slot.kind {
-            Kind::Regular if i == self.root() => self.window_size()[axis],
             Kind::Final => {
                 let (min, max) = self.solved_bounds(i, axis, |_| false);
                 if let (Some(min), Some(max)) = (min, max) && min > max {
@@ -521,8 +523,7 @@ pub(crate) trait Solve: TreeAdapter {
                 Size::Frac(frac) => self.available_from_parent(i, axis) * frac,
 
                 Size::Fill => {
-                    if self.is_in_stack(i, axis) {
-                        let parent = self.parent(i);
+                    if let Some(parent) = self.stack_parent(i, axis) {
                         self.get_solved_value(parent, axis, Kind::EvenShare) * self.node_layout_params(i).fill_weight
                     } else {
                         self.available_from_parent(i, axis)
@@ -543,8 +544,10 @@ pub(crate) trait Solve: TreeAdapter {
         (min, max)
     }
 
-    fn available_from_parent(&self, i: Self::NodeId, axis: Axis) -> f32 {
-        let parent = self.parent(i);
+    fn available_from_parent(&mut self, i: Self::NodeId, axis: Axis) -> f32 {
+        let Some(parent) = self.parent(i) else {
+            return self.layout_data().window_size[axis];
+        };
         let inner = inner(self.get_solved_value(parent, axis, Kind::Final), self.total_padding(parent, axis));
         if self.node_layout_params(i).free_placement {
             return inner;

@@ -23,8 +23,7 @@ fn main() {
     tree.add_node_with_context(vstack, text(Xy::new(Size::FitContent, Size::FitContent)), "Single line text");
     tree.add_node_with_context(vstack, text(Xy::new(Size::Fill, Size::FitContent)), "Paragraph with wrapping text. The height depends on the width. Paragraph with wrapping text. The height depends on the width. Paragraph with wrapping text. The height depends on the width. ");
 
-    tree.set_window_size(Xy::new(600.0, 450.0));
-    tree.solve_layout_with_measure(measure_monospace_text);
+    tree.solve_layout_with_measure(Xy::new(600.0, 450.0), measure_monospace_text);
     for warning in tree.warnings() {
         println!("Warning: {}", warning);
     }

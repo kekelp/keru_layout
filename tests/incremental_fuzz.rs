@@ -152,11 +152,17 @@ fn add_random_subtree(tree: &mut Tree, rng: &mut StdRng, parent: NodeId, depth: 
 
 fn random_tree(rng: &mut StdRng) -> Tree {
     let mut tree = Tree::with_capacity(128);
-    tree.set_window_size(Xy::new(800.0, 600.0));
     let root = tree.root();
     let mut params = *tree.params(root);
     params.children_layout = random_children_layout(rng);
     params.padding = Xy::new([rng.random_range(0.0..8.0f32).round(); 2], [rng.random_range(0.0..8.0f32).round(); 2]);
+    // The root is sized as a child of the window, so it can have any size.
+    if rng.random_bool(0.3) {
+        let random = random_params(rng);
+        params.size = random.size;
+        params.min_size = random.min_size;
+        params.max_size = random.max_size;
+    }
     tree.update_node_params(root, params);
     let mut budget = rng.random_range(5..200);
     let depth = rng.random_range(2..10);
@@ -167,10 +173,10 @@ fn random_tree(rng: &mut StdRng) -> Tree {
 }
 
 /// A random tree with its layout solved. Every relayout of a tree with a cycle is a full solve, so it doesn't test the incremental solver.
-fn solved_random_tree_without_cycle(rng: &mut StdRng) -> Tree {
+fn solved_random_tree_without_cycle(rng: &mut StdRng, window: Xy<f32>) -> Tree {
     loop {
         let mut tree = random_tree(rng);
-        tree.solve_layout_with_measure(measure);
+        tree.solve_layout_with_measure(window, measure);
         if ! tree.warnings().iter().any(|warning| matches!(warning, LayoutWarning::Cycle { .. })) {
             return tree;
         }
@@ -230,7 +236,7 @@ const VALUE_MUTATIONS: [Mutation; 4] = [Mutation::Number, Mutation::Content, Mut
 const STRUCTURAL_MUTATIONS: [Mutation; 6] = [Mutation::SizeKind, Mutation::Layout, Mutation::Toggle, Mutation::Add, Mutation::Remove, Mutation::Move];
 
 /// Changes the tree, which records the change by itself. It usually changes one of the `hot` nodes, if they are enabled, as an animation does.
-fn mutate(tree: &mut Tree, rng: &mut StdRng, mutation: Mutation, hot: &[NodeId]) {
+fn mutate(tree: &mut Tree, window: &mut Xy<f32>, rng: &mut StdRng, mutation: Mutation, hot: &[NodeId]) {
     let nodes = reachable(tree);
     let enabled: Vec<NodeId> = nodes.iter().copied().filter(|&i| ! tree.params(i).disabled).collect();
     let non_root: Vec<NodeId> = nodes.iter().copied().filter(|&i| i != tree.root()).collect();
@@ -343,11 +349,10 @@ fn mutate(tree: &mut Tree, rng: &mut StdRng, mutation: Mutation, hot: &[NodeId])
         }
         Mutation::Window => {
             // A small change, as in a resize by dragging, or a jump.
-            let window = tree.window_size();
-            tree.set_window_size(match rng.random_bool(0.5) {
+            *window = match rng.random_bool(0.5) {
                 true => Xy::new((window.x + rng.random_range(-20.0..20.0f32)).round().max(100.0), (window.y + rng.random_range(-20.0..20.0f32)).round().max(100.0)),
                 false => Xy::new(rng.random_range(300.0..1200.0f32).round(), rng.random_range(300.0..1200.0f32).round()),
-            });
+            };
             return;
         }
     }
@@ -361,14 +366,15 @@ fn incremental_relayout_matches_full_solve() {
     for &mutation in VALUE_MUTATIONS.iter().chain(&STRUCTURAL_MUTATIONS) {
         for _ in 0..1000 {
             // The trees can have cycles, and then the relayout is a full solve.
+            let mut window = Xy::new(800.0, 600.0);
             let mut tree = random_tree(&mut rng);
-            tree.solve_layout_with_measure(measure);
-            mutate(&mut tree, &mut rng, mutation, &[]);
+            tree.solve_layout_with_measure(window, measure);
+            mutate(&mut tree, &mut window, &mut rng, mutation, &[]);
             let mut full = tree.clone();
             full.invalidate();
-            full.solve_layout_with_measure(measure);
+            full.solve_layout_with_measure(window, measure);
 
-            let outcome = tree.solve_layout_with_measure(measure);
+            let outcome = tree.solve_layout_with_measure(window, measure);
             assert_same_layout(&tree, &full, &format!("{mutation:?}"));
             if VALUE_MUTATIONS.contains(&mutation) {
                 assert_ne!(outcome, IncrementalRelayoutOutcome::FallbackStructuralChange, "{mutation:?} is not structural");
@@ -384,7 +390,8 @@ fn incremental_relayout_sequences_match_full_solve() {
     let mut frames = 0;
     let mut incremental_frames = 0;
     for _ in 0..200 {
-        let mut tree = solved_random_tree_without_cycle(&mut rng);
+        let mut window = Xy::new(800.0, 600.0);
+        let mut tree = solved_random_tree_without_cycle(&mut rng, window);
         let nodes = reachable(&tree);
         let hot: Vec<NodeId> = (0..3).map(|_| nodes[rng.random_range(0..nodes.len())]).collect();
         for frame in 0..50 {
@@ -394,13 +401,13 @@ fn incremental_relayout_sequences_match_full_solve() {
                 mutations.push(STRUCTURAL_MUTATIONS[rng.random_range(0..STRUCTURAL_MUTATIONS.len())]);
             }
             for &mutation in &mutations {
-                mutate(&mut tree, &mut rng, mutation, &hot);
+                mutate(&mut tree, &mut window, &mut rng, mutation, &hot);
             }
             let mut full = tree.clone();
             full.invalidate();
-            full.solve_layout_with_measure(measure);
+            full.solve_layout_with_measure(window, measure);
 
-            let outcome = tree.solve_layout_with_measure(measure);
+            let outcome = tree.solve_layout_with_measure(window, measure);
             assert_same_layout(&tree, &full, &format!("frame {frame}, {mutations:?}"));
             if mutations.iter().all(|mutation| VALUE_MUTATIONS.contains(mutation)) {
                 assert_ne!(outcome, IncrementalRelayoutOutcome::FallbackStructuralChange, "{mutations:?} are not structural");

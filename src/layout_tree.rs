@@ -23,7 +23,7 @@ pub(crate) struct LayoutNode<T> {
 ///
 /// `T` is the type of the context of each node, for example its text. The measure function of `solve_layout_with_measure` receives it.
 ///
-/// The tree always has a root node, which takes the size of the window. All other nodes are descendants of the root.
+/// The tree always has a root node. It starts as `Size::Fill` on both axes, so it covers the whole `window_size` given to `solve_layout`. All other nodes are descendants of the root.
 ///
 /// The functions panic if they receive the id of a removed node.
 #[derive(Debug, Clone)]
@@ -32,7 +32,6 @@ pub struct LayoutTree<T = ()> {
     root: NodeId,
     pub(crate) layout_data: LayoutData<NodeId>,
     warnings: Vec<LayoutWarning<NodeId>>,
-    window_size: Xy<f32>,
 }
 
 impl<T> Default for LayoutTree<T> {
@@ -50,8 +49,9 @@ impl<T> LayoutTree<T> {
     /// Makes a tree that contains only the root, with space for `capacity` nodes.
     pub fn with_capacity(capacity: usize) -> Self {
         let mut nodes = SlotMap::with_capacity_and_key(capacity);
-        let root = nodes.insert(LayoutNode::new(LayoutParams::DEFAULT));
-        LayoutTree { nodes, root, layout_data: LayoutData::new(), warnings: Vec::new(), window_size: Xy::new(0.0, 0.0) }
+        let root_params = LayoutParams { size: Xy::new(Size::Fill, Size::Fill), ..LayoutParams::DEFAULT };
+        let root = nodes.insert(LayoutNode::new(root_params));
+        LayoutTree { nodes, root, layout_data: LayoutData::new(), warnings: Vec::new() }
     }
 
     /// Get the `NodeId` corresponding to the root node.
@@ -159,25 +159,15 @@ impl<T> LayoutTree<T> {
         &self.warnings
     }
 
-    /// Read the window size.
-    pub fn window_size(&self) -> Xy<f32> {
-        self.window_size
+    /// Solves the layout. `window_size` is the size of the window, in logical pixels. The text of all nodes measures as zero.
+    pub fn solve_layout(&mut self, window_size: Xy<f32>) -> IncrementalRelayoutOutcome {
+        self.solve_layout_with_measure(window_size, |_, _, _| Xy::new(0.0, 0.0))
     }
 
-    /// Sets the size of the window in logical pixels. The root takes this size. It starts as zero.
-    pub fn set_window_size(&mut self, window_size: Xy<f32>) {
-        self.window_size = window_size;
-    }
-
-    /// Solves the layout. The text of all nodes measures as zero.
-    pub fn solve_layout(&mut self) -> IncrementalRelayoutOutcome {
-        self.solve_layout_with_measure(|_, _, _| Xy::new(0.0, 0.0))
-    }
-
-    /// Solves the layout. `measure` gives the size of the text of a node, with its width optionally fixed to a wrap width.
-    pub fn solve_layout_with_measure(&mut self, measure: impl FnMut(NodeId, Option<&mut T>, Option<f32>) -> Xy<f32>) -> IncrementalRelayoutOutcome {
+    /// Solves the layout. `window_size` is the size of the window, in logical pixels. `measure` gives the size of the text of a node, with its width optionally fixed to a wrap width.
+    pub fn solve_layout_with_measure(&mut self, window_size: Xy<f32>, measure: impl FnMut(NodeId, Option<&mut T>, Option<f32>) -> Xy<f32>) -> IncrementalRelayoutOutcome {
         self.warnings.clear();
-        Adapter { tree: self, measure }.solve_layout_incremental()
+        Adapter { tree: self, measure }.solve_layout_incremental(window_size)
     }
 
     fn add_node_inner(&mut self, parent: NodeId, params: LayoutParams, context: Option<T>) -> NodeId {
@@ -263,8 +253,8 @@ impl<T, M: FnMut(NodeId, Option<&mut T>, Option<f32>) -> Xy<f32>> TreeAdapter fo
     }
 
     #[inline(always)]
-    fn parent(&self, i: NodeId) -> NodeId {
-        self.tree.nodes[i].parent.unwrap_or(self.tree.root)
+    fn parent(&self, i: NodeId) -> Option<NodeId> {
+        self.tree.nodes[i].parent
     }
 
     #[inline(always)]
@@ -306,11 +296,6 @@ impl<T, M: FnMut(NodeId, Option<&mut T>, Option<f32>) -> Xy<f32>> TreeAdapter fo
     }
 
     #[inline(always)]
-    fn window_size(&self) -> Xy<f32> {
-        self.tree.window_size
-    }
-
-    #[inline(always)]
     fn write_output_rect(&mut self, i: NodeId, rect: XyRect, _local_rect: XyRect) {
         self.tree.nodes[i].rect = rect;
     }
@@ -323,8 +308,8 @@ impl<T, M: FnMut(NodeId, Option<&mut T>, Option<f32>) -> Xy<f32>> TreeAdapter fo
 impl<T> LayoutTree<T> {
     fn to_svg_inner(&self, text: impl Fn(&T) -> &str) -> String {
         use std::fmt::Write;
-        let window = self.nodes[self.root].rect;
-        let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" font-family=\"monospace\" font-size=\"7.5\">\n", window.x[1], window.y[1]);
+        let window = self.layout_data.window_size;
+        let mut svg = format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" font-family=\"monospace\" font-size=\"7.5\">\n", window.x, window.y);
         let _ = writeln!(svg, "<rect width=\"100%\" height=\"100%\" fill=\"#faf8f5\"/>");
         let mut stack = vec![self.root];
         while let Some(i) = stack.pop() {
