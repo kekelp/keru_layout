@@ -70,7 +70,7 @@ pub trait TreeAdapter {
         self.place_nodes();
     }
 
-    /// Tries to solve the layout with a faster incremental algorithm based on the tree changes registered with `register_node_change()` and `register_content_change()`.
+    /// Tries to solve the layout with a faster incremental algorithm based on the tree changes registered with `register_node_change()`, `register_content_change()` and `register_structural_change()`.
     /// 
     /// The results should always be the same as a full relayout, provided that all the changes were registered. To catch missing register calls, you can use `solve_layout_incremental_checked()` in debug builds.
     /// 
@@ -102,6 +102,12 @@ pub trait TreeAdapter {
     #[cfg(feature = "incremental")]
     fn register_content_change(&mut self, i: Self::NodeId) {
         self.incr_register_content_change(i);
+    }
+
+    /// Records that nodes were added, removed or moved for incremental relayouts. The next relayout is a full solve.
+    #[cfg(feature = "incremental")]
+    fn register_structural_change(&mut self) {
+        self.layout_data().request_full_solve(IncrementalRelayoutOutcome::FallbackStructuralChange);
     }
 
     /// Places a free-placement node into a new position. Can be used to move scroll bars without requiring a full relayout. `parent_rect` is in logical pixels.

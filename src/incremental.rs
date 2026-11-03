@@ -9,7 +9,7 @@ pub enum IncrementalRelayoutOutcome {
         /// Slot computations.
         computed: u32,
     },
-    /// In `solve_layout_incremental_checked()`, the incremental relayout gave a different result than the full relayout. The tree keeps the result of the full relayout. This should only be possible if the tree had a structural change that wasn't registered with `register_node_change()`.
+    /// In `solve_layout_incremental_checked()`, the incremental relayout gave a different result than the full relayout. The tree keeps the result of the full relayout. This should only be possible if a change wasn't registered with `register_node_change()`, `register_content_change()` or `register_structural_change()`.
     CheckedIncrementalRelayoutMismatch,
     /// The incremental relayout fell back to a full relayout because the full layout was never solved before.
     FallbackNeverSolved,
