@@ -1,7 +1,14 @@
 [package]
 name = "keru_layout"
+description = "UI layout library"
+license = "MIT"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/kekelp/keru_layout"
+readme = "README.md"
+categories = ["gui"]
+keywords = ["gui", "ui", "layout"]
+rust-version = "1.88"
 
 [features]
 default = ["incremental"]
