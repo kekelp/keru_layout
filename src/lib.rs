@@ -437,11 +437,11 @@ pub struct LayoutParams {
 impl LayoutParams {
     /// Default values for the `LayoutParams`.
     pub const DEFAULT: LayoutParams = LayoutParams {
-        size: Xy { x: Size::FitContent, y: Size::FitContent },
+        size: Xy { x: Size::Fill, y: Size::Fill },
         min_size: Xy { x: None, y: None },
         max_size: Xy { x: None, y: None },
         fill_weight: 1.0,
-        padding: Xy { x: [5.0, 5.0], y: [5.0, 5.0] },
+        padding: Xy { x: [0.0, 0.0], y: [0.0, 0.0] },
         children_layout: ChildrenLayout::Free,
         free_placement: false,
         grid_span: Xy { x: 1, y: 1 },
