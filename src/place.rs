@@ -238,9 +238,8 @@ pub(crate) trait Place: Solve {
             let a = if ! frame.flipped[axis] { lo + anchor_frac * size } else { hi - anchor_frac * size };
 
             let reflected = [2.0 * a - hi, 2.0 * a - lo];
-            if hi > win_high && reflected[0] >= win_low {
-                out = reflected;
-            } else if lo < win_low && reflected[1] <= win_high {
+            let should_reflect = hi > win_high && reflected[0] >= win_low || lo < win_low && reflected[1] <= win_high;
+            if should_reflect {
                 out = reflected;
             }
         }

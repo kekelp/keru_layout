@@ -9,6 +9,9 @@ readme = "README.md"
 categories = ["gui"]
 keywords = ["gui", "ui", "layout"]
 rust-version = "1.88"
+exclude = [
+    "examples/example.svg",
+]
 
 [features]
 default = ["incremental"]
